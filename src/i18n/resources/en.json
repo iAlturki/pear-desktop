@@ -593,6 +593,22 @@
       "description": "Makes the volume slider exponential so it's easier to select lower volumes.",
       "name": "Exponential Volume"
     },
+    "fade-playback": {
+      "description": "Smoothly fades audio out on pause/skip and back in on play/resume, instead of cutting it abruptly.",
+      "menu": {
+        "advanced": "Advanced"
+      },
+      "name": "Fade Playback",
+      "prompt": {
+        "options": {
+          "multi-input": {
+            "fade-in-duration": "Fade in duration (ms)",
+            "fade-out-duration": "Fade out duration (ms)"
+          },
+          "title": "Fade playback options"
+        }
+      }
+    },
     "in-app-menu": {
       "description": "Gives menu-bars a fancy, dark or album-color look",
       "menu": {
