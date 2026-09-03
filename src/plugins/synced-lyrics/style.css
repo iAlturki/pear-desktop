@@ -16,7 +16,17 @@
 
 @property --lyrics-duration {
   syntax: '<time>';
-  inherits: false;
+  /* Must inherit: SyncedLine.tsx sets the real per-line duration inline on
+     .text-lyrics, and --lyrics-glow-duration/--lyrics-wobble-duration (and
+     the animations built from them) are only defined once, at :root, in
+     terms of var(--lyrics-duration). With inherits:false that per-line
+     override never reached those descendant word spans - every line's
+     word-glow animation used the 2s fallback instead of its own actual
+     sung duration, so on any line longer than ~1s the whole per-word
+     stagger (50ms per word) finished almost instantly at the very start,
+     reading as the whole line lighting up at once instead of progressing
+     word by word with the line's actual pace. */
+  inherits: true;
   initial-value: 2s;
 }
 
