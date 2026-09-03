@@ -5,7 +5,6 @@ import { VolumeFader } from '@/plugins/crossfade/fader';
 import promptOptions from '@/providers/prompt-options';
 import { createPlugin } from '@/utils';
 
-import type { MusicPlayer } from '@/types/music-player';
 import type { BrowserWindow } from 'electron';
 
 export type FadePlaybackPluginConfig = {
@@ -41,15 +40,16 @@ export default createPlugin<
   unknown,
   {
     config?: FadePlaybackPluginConfig;
-    api?: MusicPlayer | null;
     video?: HTMLVideoElement | null;
     fader?: VolumeFader;
     userVolume: number;
     isFading: boolean;
-    originalPauseVideo?: () => void;
+    endFadeTriggered: boolean;
+    originalVideoPause?: () => void;
     playListener?: () => void;
     volumeChangeListener?: () => void;
     skipClickListener?: (event: MouseEvent) => void;
+    timeUpdateListener?: () => void;
   },
   FadePlaybackPluginConfig
 >({
@@ -154,15 +154,14 @@ export default createPlugin<
   renderer: {
     userVolume: 1,
     isFading: false,
+    endFadeTriggered: false,
     async start({ getConfig }) {
       this.config = await getConfig();
     },
     onConfigChange(newConfig) {
       this.config = newConfig;
     },
-    onPlayerApiReady(api) {
-      this.api = api;
-
+    onPlayerApiReady() {
       const video = document.querySelector('video');
       if (!video) {
         return;
@@ -182,6 +181,7 @@ export default createPlugin<
       // Fade in whenever playback (re)starts, whether that's a manual resume
       // or autoplay of the next track after a skip.
       this.playListener = () => {
+        this.endFadeTriggered = false;
         if (!this.config?.enabled) {
           return;
         }
@@ -199,8 +199,12 @@ export default createPlugin<
 
       // Fading out on pause requires delaying the actual pause until the
       // fade completes, since a paused element no longer produces audio.
-      this.originalPauseVideo = api.pauseVideo.bind(api);
-      api.pauseVideo = () => {
+      // Intercept at the <video> element itself (not api.pauseVideo) since
+      // the on-screen pause button, keyboard shortcuts, media keys, and IPC
+      // calls all funnel down to video.pause() eventually - api.pauseVideo()
+      // alone misses the on-screen button entirely.
+      this.originalVideoPause = video.pause.bind(video);
+      video.pause = () => {
         if (
           !this.config?.enabled ||
           !this.config.fadeOnPause ||
@@ -209,7 +213,7 @@ export default createPlugin<
         ) {
           // If a fade (e.g. a pending skip) is already in flight, don't
           // stomp on it and lose its callback - just pause immediately.
-          this.originalPauseVideo!();
+          this.originalVideoPause!();
           return;
         }
 
@@ -219,16 +223,23 @@ export default createPlugin<
         );
         this.fader!.fadeOut(() => {
           this.isFading = false;
-          this.originalPauseVideo!();
+          this.originalVideoPause!();
         });
       };
 
       // Same idea for skipping tracks via the player bar's next/previous
-      // buttons (also used by the media keys / global shortcuts / other plugins).
+      // buttons (also used by the media keys / global shortcuts / other
+      // plugins). These buttons live inside a web component's shadow DOM,
+      // so a document-level listener sees event.target retargeted to the
+      // shadow host - composedPath() is needed to find the real target.
       this.skipClickListener = (event: MouseEvent) => {
-        const button = (event.target as HTMLElement | null)?.closest(
-          '.next-button, .previous-button',
-        );
+        const button = event
+          .composedPath()
+          .find(
+            (el): el is HTMLElement =>
+              el instanceof HTMLElement &&
+              el.matches('.next-button, .previous-button'),
+          );
         if (!button || !this.config?.enabled || !this.config.fadeOnSkip) {
           return;
         }
@@ -254,11 +265,41 @@ export default createPlugin<
         this.fader!.fadeOut(() => {
           this.isFading = false;
           document.removeEventListener('click', this.skipClickListener!, true);
-          (button as HTMLElement).click();
+          button.click();
           document.addEventListener('click', this.skipClickListener!, true);
         });
       };
       document.addEventListener('click', this.skipClickListener, true);
+
+      // Fade out proactively as the track nears its natural end too, so an
+      // automatic advance to the next track (no button click involved)
+      // fades instead of cutting off abruptly.
+      this.timeUpdateListener = () => {
+        if (
+          !this.config?.enabled ||
+          !this.config.fadeOnSkip ||
+          this.isFading ||
+          this.endFadeTriggered ||
+          !Number.isFinite(video.duration)
+        ) {
+          return;
+        }
+
+        const fadeOutSeconds =
+          Math.max(1, this.config.fadeOutDuration || 0) / 1000;
+        const remaining = video.duration - video.currentTime;
+        if (remaining > 0 && remaining <= fadeOutSeconds) {
+          this.endFadeTriggered = true;
+          this.isFading = true;
+          this.fader!.setFadeDuration(
+            Math.max(1, this.config.fadeOutDuration || 0),
+          );
+          this.fader!.fadeOut(() => {
+            this.isFading = false;
+          });
+        }
+      };
+      video.addEventListener('timeupdate', this.timeUpdateListener);
     },
     stop() {
       if (this.video) {
@@ -271,13 +312,16 @@ export default createPlugin<
             this.volumeChangeListener,
           );
         }
+        if (this.timeUpdateListener) {
+          this.video.removeEventListener('timeupdate', this.timeUpdateListener);
+        }
+        if (this.originalVideoPause) {
+          this.video.pause = this.originalVideoPause;
+        }
         this.video.volume = this.userVolume;
       }
       if (this.skipClickListener) {
         document.removeEventListener('click', this.skipClickListener, true);
-      }
-      if (this.api && this.originalPauseVideo) {
-        this.api.pauseVideo = this.originalPauseVideo;
       }
       this.fader?.stop();
       // fader.stop() abandons any in-flight fade without invoking its
