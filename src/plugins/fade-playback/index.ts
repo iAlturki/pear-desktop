@@ -44,6 +44,7 @@ export default createPlugin<
     fader?: VolumeFader;
     userVolume: number;
     isFading: boolean;
+    weTriggeredFadeOut: boolean;
     endFadeTriggered: boolean;
     originalVideoPause?: () => void;
     playListener?: () => void;
@@ -154,6 +155,7 @@ export default createPlugin<
   renderer: {
     userVolume: 1,
     isFading: false,
+    weTriggeredFadeOut: false,
     endFadeTriggered: false,
     async start({ getConfig }) {
       this.config = await getConfig();
@@ -178,13 +180,23 @@ export default createPlugin<
       };
       video.addEventListener('volumechange', this.volumeChangeListener);
 
-      // Fade in whenever playback (re)starts, whether that's a manual resume
-      // or autoplay of the next track after a skip.
+      // Fade in whenever playback (re)starts after a fade-out *we* caused
+      // (pause, skip, or the track naturally ending) - never on a 'play'
+      // we didn't precede, e.g. the very first playback after app launch.
+      // Otherwise we'd capture whatever video.volume happens to be at that
+      // instant as the "remembered" volume to fade back to, which can race
+      // ahead of the app restoring the user's actual saved volume - fading
+      // up to a stale/default value instead of it.
       this.playListener = () => {
         this.endFadeTriggered = false;
-        if (!this.config?.enabled) {
+
+        if (!this.config?.enabled || !this.weTriggeredFadeOut) {
+          if (!this.isFading) {
+            this.userVolume = video.volume;
+          }
           return;
         }
+        this.weTriggeredFadeOut = false;
 
         this.isFading = true;
         video.volume = 0;
@@ -223,6 +235,7 @@ export default createPlugin<
         );
         this.fader!.fadeOut(() => {
           this.isFading = false;
+          this.weTriggeredFadeOut = true;
           this.originalVideoPause!();
         });
       };
@@ -264,6 +277,7 @@ export default createPlugin<
         );
         this.fader!.fadeOut(() => {
           this.isFading = false;
+          this.weTriggeredFadeOut = true;
           document.removeEventListener('click', this.skipClickListener!, true);
           button.click();
           document.addEventListener('click', this.skipClickListener!, true);
@@ -296,6 +310,7 @@ export default createPlugin<
           );
           this.fader!.fadeOut(() => {
             this.isFading = false;
+            this.weTriggeredFadeOut = true;
           });
         }
       };
