@@ -25,6 +25,11 @@ export type LineLyrics = {
 
   text: string;
   status: LineLyricsStatus;
+
+  // Real per-word timestamps, only present for enhanced/word-synced LRC
+  // sources (e.g. some LRCLib and MusixMatch entries embed <mm:ss.xx> tags
+  // per word). When absent, word timing is estimated from text length.
+  words?: { timeInMs: number; word: string }[];
 };
 
 export type LineEffect = 'fancy' | 'scale' | 'offset' | 'focus';

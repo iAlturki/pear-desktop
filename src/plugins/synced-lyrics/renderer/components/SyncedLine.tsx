@@ -129,9 +129,19 @@ export const SyncedLine = (props: SyncedLineProps) => {
   // timeline, so it stays correct through seeking/pausing and reflects the
   // line's real pace instead of a uniform per-word delay.
   const words = createMemo(() => text().split(' '));
-  const wordOffsets = createMemo(() =>
-    computeWordStartOffsets(words(), props.line.duration),
-  );
+  const wordOffsets = createMemo(() => {
+    // Prefer real per-word timestamps (enhanced/word-synced LRC) over the
+    // length-based estimate whenever the source actually has them - the
+    // estimate spreads words evenly across the *entire* line duration
+    // (which usually includes trailing instrumental gap before the next
+    // line), so every word past the first tends to read as lagging behind
+    // when it's sung, even though the animation itself is instant.
+    const wordTimings = props.line.words;
+    if (wordTimings?.length === words().length) {
+      return wordTimings.map((word) => word.timeInMs - props.line.timeInMs);
+    }
+    return computeWordStartOffsets(words(), props.line.duration);
+  });
   const activeWordCount = createMemo(() => {
     if (props.status === 'previous') return words().length;
     if (props.status !== 'current') return 0;
