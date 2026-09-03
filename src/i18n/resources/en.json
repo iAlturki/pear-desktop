@@ -596,7 +596,9 @@
     "fade-playback": {
       "description": "Smoothly fades audio out on pause/skip and back in on play/resume, instead of cutting it abruptly.",
       "menu": {
-        "advanced": "Advanced"
+        "advanced": "Advanced",
+        "fade-on-pause": "Fade on pause",
+        "fade-on-skip": "Fade on skip (next/previous)"
       },
       "name": "Fade Playback",
       "prompt": {

@@ -17,11 +17,23 @@ export type FadePlaybackPluginConfig = {
    */
   fadeInDuration: number;
   /**
-   * Duration in milliseconds of the fade-out applied before pausing or skipping to the next track.
+   * Duration in milliseconds of the fade-out applied before pausing or skipping tracks.
    *
    * @default 800ms
    */
   fadeOutDuration: number;
+  /**
+   * Whether to fade out before pausing.
+   *
+   * @default true
+   */
+  fadeOnPause: boolean;
+  /**
+   * Whether to fade out before skipping to the next/previous track.
+   *
+   * @default true
+   */
+  fadeOnSkip: boolean;
 };
 
 export default createPlugin<
@@ -37,7 +49,7 @@ export default createPlugin<
     originalPauseVideo?: () => void;
     playListener?: () => void;
     volumeChangeListener?: () => void;
-    nextClickListener?: (event: MouseEvent) => void;
+    skipClickListener?: (event: MouseEvent) => void;
   },
   FadePlaybackPluginConfig
 >({
@@ -48,12 +60,19 @@ export default createPlugin<
     enabled: false,
     fadeInDuration: 800,
     fadeOutDuration: 800,
+    fadeOnPause: true,
+    fadeOnSkip: true,
   },
-  menu({ window, getConfig, setConfig }) {
+  menu: async ({ window, getConfig, setConfig }) => {
+    const config = await getConfig();
+
     const promptFadeValues = async (
       win: BrowserWindow,
       options: FadePlaybackPluginConfig,
-    ): Promise<Omit<FadePlaybackPluginConfig, 'enabled'> | undefined> => {
+    ): Promise<
+      | Pick<FadePlaybackPluginConfig, 'fadeInDuration' | 'fadeOutDuration'>
+      | undefined
+    > => {
       const res = await prompt(
         {
           title: t('plugins.fade-playback.prompt.options.title'),
@@ -102,6 +121,24 @@ export default createPlugin<
     };
 
     return [
+      {
+        label: t('plugins.fade-playback.menu.fade-on-pause'),
+        type: 'checkbox',
+        checked: config.fadeOnPause,
+        async click() {
+          const nowConfig = await getConfig();
+          setConfig({ fadeOnPause: !nowConfig.fadeOnPause });
+        },
+      },
+      {
+        label: t('plugins.fade-playback.menu.fade-on-skip'),
+        type: 'checkbox',
+        checked: config.fadeOnSkip,
+        async click() {
+          const nowConfig = await getConfig();
+          setConfig({ fadeOnSkip: !nowConfig.fadeOnSkip });
+        },
+      },
       {
         label: t('plugins.fade-playback.menu.advanced'),
         async click() {
@@ -162,7 +199,7 @@ export default createPlugin<
       // fade completes, since a paused element no longer produces audio.
       this.originalPauseVideo = api.pauseVideo.bind(api);
       api.pauseVideo = () => {
-        if (!this.config?.enabled || video.paused) {
+        if (!this.config?.enabled || !this.config.fadeOnPause || video.paused) {
           this.originalPauseVideo!();
           return;
         }
@@ -175,13 +212,13 @@ export default createPlugin<
         });
       };
 
-      // Same idea for skipping to the next track via the player bar's next
-      // button (also used by the media keys / global shortcuts / other plugins).
-      this.nextClickListener = (event: MouseEvent) => {
+      // Same idea for skipping tracks via the player bar's next/previous
+      // buttons (also used by the media keys / global shortcuts / other plugins).
+      this.skipClickListener = (event: MouseEvent) => {
         const button = (event.target as HTMLElement | null)?.closest(
-          '.next-button',
+          '.next-button, .previous-button',
         );
-        if (!button || !this.config?.enabled) {
+        if (!button || !this.config?.enabled || !this.config.fadeOnSkip) {
           return;
         }
 
@@ -203,12 +240,12 @@ export default createPlugin<
         this.fader!.setFadeDuration(this.config.fadeOutDuration || 1);
         this.fader!.fadeOut(() => {
           this.isFading = false;
-          document.removeEventListener('click', this.nextClickListener!, true);
+          document.removeEventListener('click', this.skipClickListener!, true);
           (button as HTMLElement).click();
-          document.addEventListener('click', this.nextClickListener!, true);
+          document.addEventListener('click', this.skipClickListener!, true);
         });
       };
-      document.addEventListener('click', this.nextClickListener, true);
+      document.addEventListener('click', this.skipClickListener, true);
     },
     stop() {
       if (this.video) {
@@ -223,8 +260,8 @@ export default createPlugin<
         }
         this.video.volume = this.userVolume;
       }
-      if (this.nextClickListener) {
-        document.removeEventListener('click', this.nextClickListener, true);
+      if (this.skipClickListener) {
+        document.removeEventListener('click', this.skipClickListener, true);
       }
       if (this.api && this.originalPauseVideo) {
         this.api.pauseVideo = this.originalPauseVideo;
