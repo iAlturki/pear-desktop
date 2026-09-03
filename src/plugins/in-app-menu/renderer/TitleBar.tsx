@@ -191,9 +191,19 @@ export const TitleBar = (props: TitleBarProps) => {
   const [menu, setMenu] = createSignal<Menu | null>(null);
   const [mouseY, setMouseY] = createSignal(0);
 
-  const [data, { refetch }] = createResource(
-    async () => (await props.ipc.invoke('get-menu')) as Promise<Menu | null>,
-  );
+  const fetchMenu = async () => {
+    // The menu is built shortly after the window is created; if this races
+    // ahead of that (e.g. on a slow/fast startup), retry instead of leaving
+    // the title bar permanently empty for the rest of the session.
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const result = (await props.ipc.invoke('get-menu')) as Menu | null;
+      if (result) return result;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    return null;
+  };
+  const [data, { refetch }] = createResource(fetchMenu);
   const [isMaximized, { refetch: refetchMaximize }] = createResource(
     async () =>
       (await props.ipc.invoke('window-is-maximized')) as Promise<boolean>,
@@ -384,7 +394,7 @@ export const TitleBar = (props: TitleBarProps) => {
 
           (element as HTMLElement).style.setProperty(
             'transition-delay',
-            `${(length * 0.025) - (index * 0.025)}s`,
+            `${length * 0.025 - index * 0.025}s`,
           );
         }}
       >
