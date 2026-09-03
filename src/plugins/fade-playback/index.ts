@@ -5,6 +5,7 @@ import { VolumeFader } from '@/plugins/utils/renderer/volume-fader';
 import promptOptions from '@/providers/prompt-options';
 import { createPlugin } from '@/utils';
 
+import type { MusicPlayer } from '@/types/music-player';
 import type { BrowserWindow } from 'electron';
 
 export type FadePlaybackPluginConfig = {
@@ -40,6 +41,7 @@ export default createPlugin<
   unknown,
   {
     config?: FadePlaybackPluginConfig;
+    api?: MusicPlayer | null;
     video?: HTMLVideoElement | null;
     fader?: VolumeFader;
     // The volume to fade back to, captured synchronously the instant a
@@ -51,7 +53,7 @@ export default createPlugin<
     isFading: boolean;
     weTriggeredFadeOut: boolean;
     endFadeTriggered: boolean;
-    originalVideoPause?: () => void;
+    originalPauseVideo?: () => void;
     playListener?: () => void;
     skipClickListener?: (event: MouseEvent) => void;
     timeUpdateListener?: () => void;
@@ -167,7 +169,9 @@ export default createPlugin<
     onConfigChange(newConfig) {
       this.config = newConfig;
     },
-    onPlayerApiReady() {
+    onPlayerApiReady(api) {
+      this.api = api;
+
       const video = document.querySelector('video');
       if (!video) {
         return;
@@ -202,12 +206,15 @@ export default createPlugin<
 
       // Fading out on pause requires delaying the actual pause until the
       // fade completes, since a paused element no longer produces audio.
-      // Intercept at the <video> element itself (not api.pauseVideo) since
-      // the on-screen pause button, keyboard shortcuts, media keys, and IPC
-      // calls all funnel down to video.pause() eventually - api.pauseVideo()
-      // alone misses the on-screen button entirely.
-      this.originalVideoPause = video.pause.bind(video);
-      video.pause = () => {
+      // Intercept api.pauseVideo() - the same entry point this app's own
+      // IPC/media-key/shortcut paths use (see renderer.ts) - rather than
+      // the <video> element's own pause() method. video.pause() is also
+      // called internally by the player for reasons that have nothing to
+      // do with the user pausing (seeking, buffering, track transitions),
+      // and delaying those breaks its own state machine - it was causing
+      // glitchy seeks and tracks starting stuck in a paused state.
+      this.originalPauseVideo = api.pauseVideo.bind(api);
+      api.pauseVideo = () => {
         if (
           !this.config?.enabled ||
           !this.config.fadeOnPause ||
@@ -216,7 +223,7 @@ export default createPlugin<
         ) {
           // If a fade (e.g. a pending skip) is already in flight, don't
           // stomp on it and lose its callback - just pause immediately.
-          this.originalVideoPause!();
+          this.originalPauseVideo!();
           return;
         }
 
@@ -228,7 +235,7 @@ export default createPlugin<
         this.fader!.fadeOut(() => {
           this.isFading = false;
           this.weTriggeredFadeOut = true;
-          this.originalVideoPause!();
+          this.originalPauseVideo!();
         });
       };
 
@@ -287,6 +294,7 @@ export default createPlugin<
           !this.config.fadeOnSkip ||
           this.isFading ||
           this.endFadeTriggered ||
+          video.seeking ||
           !Number.isFinite(video.duration)
         ) {
           return;
@@ -318,14 +326,14 @@ export default createPlugin<
         if (this.timeUpdateListener) {
           this.video.removeEventListener('timeupdate', this.timeUpdateListener);
         }
-        if (this.originalVideoPause) {
-          this.video.pause = this.originalVideoPause;
-        }
         // If a fade was cut off mid-flight, jump back to the volume it
         // started from instead of leaving it stuck at a partial level.
         if (this.isFading) {
           this.video.volume = this.volumeBeforeFadeOut;
         }
+      }
+      if (this.api && this.originalPauseVideo) {
+        this.api.pauseVideo = this.originalPauseVideo;
       }
       if (this.skipClickListener) {
         document.removeEventListener('click', this.skipClickListener, true);

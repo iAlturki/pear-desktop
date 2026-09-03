@@ -31,14 +31,16 @@ const inAppMenuActive = await config.plugins.isEnabled('in-app-menu');
 const pluginEnabledMenu = async (
   plugin: string,
   label = '',
-  description?: string ,
+  description?: string,
   isNew = false,
   hasSubmenu = false,
-  refreshMenu?: (() => void) ,
+  refreshMenu?: () => void,
 ): Promise<Electron.MenuItemConstructorOptions> => ({
   label: label || plugin,
   sublabel: isNew ? t('main.menu.plugins.new') : undefined,
-  toolTip: description,
+  // toolTip is only documented/supported on macOS - on Windows it renders
+  // as an overlapping popup that visually collides with adjacent items.
+  toolTip: is.macOS() ? description : undefined,
   type: 'checkbox',
   checked: await config.plugins.isEnabled(plugin),
   click(item: Electron.MenuItem) {
@@ -98,7 +100,7 @@ export const mainMenuTemplate = async (
         {
           label: pluginLabel,
           sublabel: isNew ? t('main.menu.plugins.new') : undefined,
-          toolTip: pluginDescription,
+          toolTip: is.macOS() ? pluginDescription : undefined,
           submenu: [
             await pluginEnabledMenu(
               id,
