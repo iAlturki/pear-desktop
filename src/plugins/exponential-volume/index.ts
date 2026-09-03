@@ -14,16 +14,22 @@ const EXPONENT = 3;
 // Captured once, outside the plugin's start/stop lifecycle, so re-enabling
 // the plugin can never wrap an already-wrapped getter/setter (which would
 // compound the exponent on every disable/enable cycle).
-const originalDescriptor = Object.getOwnPropertyDescriptor(
-  HTMLMediaElement.prototype,
-  'volume',
-);
+//
+// This must stay lazy (captured inside patch(), not at module scope):
+// plugin files get imported in the main process too, just to check whether
+// they export a `backend` - and HTMLMediaElement doesn't exist there.
+let originalDescriptor: PropertyDescriptor | undefined;
 let isPatched = false;
 const storedOriginalVolumes = new WeakMap<HTMLMediaElement, number>();
 
 const patch = () => {
   if (isPatched) return;
   isPatched = true;
+
+  originalDescriptor = Object.getOwnPropertyDescriptor(
+    HTMLMediaElement.prototype,
+    'volume',
+  );
 
   Object.defineProperty(HTMLMediaElement.prototype, 'volume', {
     configurable: true,

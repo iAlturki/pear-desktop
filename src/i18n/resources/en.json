@@ -215,6 +215,13 @@
     }
   },
   "plugins": {
+    "ad-skip": {
+      "description": "Auto-clicks the Skip Ad button as soon as it's available, and mutes audio during unskippable ads",
+      "menu": {
+        "mute-during-ads": "Mute during unskippable ads"
+      },
+      "name": "Ad Skip"
+    },
     "ad-speedup": {
       "description": "If an ad play it mutes the audio and sets playback speed to 16x",
       "name": "Ad Speedup"
