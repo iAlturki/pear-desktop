@@ -22,7 +22,7 @@ export const renderer = createRenderer<
     observerCallback: MutationCallback;
     observer?: MutationObserver;
     videoDataChange: () => Promise<void>;
-    updateTimestampInterval?: NodeJS.Timeout | string | number;
+    updateTimestampFrame?: number;
   },
   SyncedLyricsPluginConfig
 >({
@@ -53,11 +53,17 @@ export const renderer = createRenderer<
     await this.videoDataChange();
   },
   async videoDataChange() {
-    if (!this.updateTimestampInterval) {
-      this.updateTimestampInterval = setInterval(
-        () => setCurrentTime((_ytAPI?.getCurrentTime() ?? 0) * 1000),
-        100,
-      );
+    if (this.updateTimestampFrame === undefined) {
+      // requestAnimationFrame instead of a fixed setInterval poll: ties the
+      // word-highlight clock to the actual screen refresh (~16ms) instead
+      // of a 100ms tick, which was adding up to 100ms of extra lag on top
+      // of the CSS transition before a word was even told to light up. It
+      // also auto-pauses while the window is hidden, unlike setInterval.
+      const tick = () => {
+        setCurrentTime((_ytAPI?.getCurrentTime() ?? 0) * 1000);
+        this.updateTimestampFrame = requestAnimationFrame(tick);
+      };
+      this.updateTimestampFrame = requestAnimationFrame(tick);
     }
 
     // prettier-ignore
@@ -95,9 +101,9 @@ export const renderer = createRenderer<
 
     this.observer?.disconnect();
 
-    if (this.updateTimestampInterval) {
-      clearInterval(this.updateTimestampInterval);
-      this.updateTimestampInterval = undefined;
+    if (this.updateTimestampFrame !== undefined) {
+      cancelAnimationFrame(this.updateTimestampFrame);
+      this.updateTimestampFrame = undefined;
     }
 
     disposeReactiveRoot();
