@@ -360,12 +360,8 @@ function initTheme(win: BrowserWindow) {
     }
   }
 
-  win.webContents.once('did-finish-load', () => {
-    if (is.dev()) {
-      console.debug(LoggerPrefix, t('main.console.did-finish-load.dev-tools'));
-      win.webContents.openDevTools();
-    }
-  });
+  // DevTools no longer auto-open in dev mode - use the electron-debug
+  // keyboard shortcut (Ctrl+Shift+I / F12) to open it manually when needed.
 }
 
 async function createMainWindow() {

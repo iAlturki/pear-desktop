@@ -42,13 +42,17 @@ export default createPlugin<
     config?: FadePlaybackPluginConfig;
     video?: HTMLVideoElement | null;
     fader?: VolumeFader;
-    userVolume: number;
+    // The volume to fade back to, captured synchronously the instant a
+    // fade-out begins (never tracked via a 'volumechange' listener - that
+    // races against the fade's own final volume=0 assignment, whose event
+    // fires asynchronously after isFading has already reset to false,
+    // corrupting the remembered value to 0).
+    volumeBeforeFadeOut: number;
     isFading: boolean;
     weTriggeredFadeOut: boolean;
     endFadeTriggered: boolean;
     originalVideoPause?: () => void;
     playListener?: () => void;
-    volumeChangeListener?: () => void;
     skipClickListener?: (event: MouseEvent) => void;
     timeUpdateListener?: () => void;
   },
@@ -153,7 +157,7 @@ export default createPlugin<
   },
 
   renderer: {
-    userVolume: 1,
+    volumeBeforeFadeOut: 1,
     isFading: false,
     weTriggeredFadeOut: false,
     endFadeTriggered: false,
@@ -169,41 +173,28 @@ export default createPlugin<
         return;
       }
       this.video = video;
-      this.userVolume = video.volume;
       this.fader = new VolumeFader(video, { fadeScaling: 'linear' });
-
-      // Track the volume the user actually wants, ignoring the dips we cause ourselves.
-      this.volumeChangeListener = () => {
-        if (!this.isFading) {
-          this.userVolume = video.volume;
-        }
-      };
-      video.addEventListener('volumechange', this.volumeChangeListener);
 
       // Fade in whenever playback (re)starts after a fade-out *we* caused
       // (pause, skip, or the track naturally ending) - never on a 'play'
       // we didn't precede, e.g. the very first playback after app launch.
-      // Otherwise we'd capture whatever video.volume happens to be at that
-      // instant as the "remembered" volume to fade back to, which can race
-      // ahead of the app restoring the user's actual saved volume - fading
-      // up to a stale/default value instead of it.
+      // Untouched otherwise, so it can never race ahead of the app
+      // restoring the user's actual saved volume.
       this.playListener = () => {
         this.endFadeTriggered = false;
 
         if (!this.config?.enabled || !this.weTriggeredFadeOut) {
-          if (!this.isFading) {
-            this.userVolume = video.volume;
-          }
           return;
         }
         this.weTriggeredFadeOut = false;
 
         this.isFading = true;
+        const targetVolume = this.volumeBeforeFadeOut;
         video.volume = 0;
         this.fader!.setFadeDuration(
           Math.max(1, this.config.fadeInDuration || 0),
         );
-        this.fader!.fadeTo(this.userVolume, () => {
+        this.fader!.fadeTo(targetVolume, () => {
           this.isFading = false;
         });
       };
@@ -230,6 +221,7 @@ export default createPlugin<
         }
 
         this.isFading = true;
+        this.volumeBeforeFadeOut = video.volume;
         this.fader!.setFadeDuration(
           Math.max(1, this.config.fadeOutDuration || 0),
         );
@@ -272,6 +264,7 @@ export default createPlugin<
         event.stopImmediatePropagation();
 
         this.isFading = true;
+        this.volumeBeforeFadeOut = video.volume;
         this.fader!.setFadeDuration(
           Math.max(1, this.config.fadeOutDuration || 0),
         );
@@ -305,6 +298,7 @@ export default createPlugin<
         if (remaining > 0 && remaining <= fadeOutSeconds) {
           this.endFadeTriggered = true;
           this.isFading = true;
+          this.volumeBeforeFadeOut = video.volume;
           this.fader!.setFadeDuration(
             Math.max(1, this.config.fadeOutDuration || 0),
           );
@@ -321,19 +315,17 @@ export default createPlugin<
         if (this.playListener) {
           this.video.removeEventListener('play', this.playListener);
         }
-        if (this.volumeChangeListener) {
-          this.video.removeEventListener(
-            'volumechange',
-            this.volumeChangeListener,
-          );
-        }
         if (this.timeUpdateListener) {
           this.video.removeEventListener('timeupdate', this.timeUpdateListener);
         }
         if (this.originalVideoPause) {
           this.video.pause = this.originalVideoPause;
         }
-        this.video.volume = this.userVolume;
+        // If a fade was cut off mid-flight, jump back to the volume it
+        // started from instead of leaving it stuck at a partial level.
+        if (this.isFading) {
+          this.video.volume = this.volumeBeforeFadeOut;
+        }
       }
       if (this.skipClickListener) {
         document.removeEventListener('click', this.skipClickListener, true);
