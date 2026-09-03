@@ -36,28 +36,38 @@ export const backend = createBackend<BackendType, APIServerConfig>({
       this.songInfo = songInfo;
     });
 
-    ctx.ipc.on('peard:player-api-loaded', () => {
+    this.playerApiLoadedListener = () => {
       ctx.ipc.send('peard:setup-seeked-listener');
       ctx.ipc.send('peard:setup-time-changed-listener');
       ctx.ipc.send('peard:setup-repeat-changed-listener');
       ctx.ipc.send('peard:setup-like-changed-listener');
       ctx.ipc.send('peard:setup-volume-changed-listener');
       ctx.ipc.send('peard:setup-shuffle-changed-listener');
-    });
+    };
+    ctx.ipc.on('peard:player-api-loaded', this.playerApiLoadedListener);
 
-    ctx.ipc.on(
-      'peard:repeat-changed',
-      (mode: RepeatMode) => (this.currentRepeatMode = mode),
-    );
+    this.repeatChangedListener = (mode: RepeatMode) => {
+      this.currentRepeatMode = mode;
+    };
+    ctx.ipc.on('peard:repeat-changed', this.repeatChangedListener);
 
-    ctx.ipc.on(
-      'peard:volume-changed',
-      (newVolumeState: VolumeState) => (this.volumeState = newVolumeState),
-    );
+    this.volumeChangedListener = (newVolumeState: VolumeState) => {
+      this.volumeState = newVolumeState;
+    };
+    ctx.ipc.on('peard:volume-changed', this.volumeChangedListener);
 
     this.run(config);
   },
-  stop() {
+  stop(ctx) {
+    if (this.playerApiLoadedListener) {
+      ctx.ipc.off('peard:player-api-loaded', this.playerApiLoadedListener);
+    }
+    if (this.repeatChangedListener) {
+      ctx.ipc.off('peard:repeat-changed', this.repeatChangedListener);
+    }
+    if (this.volumeChangedListener) {
+      ctx.ipc.off('peard:volume-changed', this.volumeChangedListener);
+    }
     this.end();
   },
   onConfigChange(config) {

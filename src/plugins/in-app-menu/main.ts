@@ -25,13 +25,24 @@ export const onMainLoad = ({
     });
   });
 
-  handle('get-menu', () =>
-    JSON.parse(
-      JSON.stringify(Menu.getApplicationMenu(), (key: string, value: unknown) =>
-        key !== 'commandsMap' && key !== 'menu' ? value : undefined,
-      ),
-    ),
-  );
+  // Menu.setApplicationMenu() always assigns a brand new Menu instance, so
+  // caching by reference lets repeated 'get-menu' calls (fired on every
+  // in-app-menu load) skip re-walking/re-encoding the whole tree when
+  // nothing has actually changed since the last call.
+  let cachedMenuRef: Electron.Menu | null = null;
+  let cachedMenuJson: unknown;
+  handle('get-menu', () => {
+    const currentMenu = Menu.getApplicationMenu();
+    if (currentMenu !== cachedMenuRef) {
+      cachedMenuRef = currentMenu;
+      cachedMenuJson = JSON.parse(
+        JSON.stringify(currentMenu, (key: string, value: unknown) =>
+          key !== 'commandsMap' && key !== 'menu' ? value : undefined,
+        ),
+      );
+    }
+    return cachedMenuJson;
+  });
 
   const getMenuItemById = (commandId: number): MenuItem | null => {
     const menu = Menu.getApplicationMenu();

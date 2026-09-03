@@ -196,8 +196,12 @@ export const TitleBar = (props: TitleBarProps) => {
     // ahead of that (e.g. on a slow/fast startup), retry instead of leaving
     // the title bar permanently empty for the rest of the session.
     for (let attempt = 0; attempt < 20; attempt++) {
-      const result = (await props.ipc.invoke('get-menu')) as Menu | null;
-      if (result) return result;
+      try {
+        const result = (await props.ipc.invoke('get-menu')) as Menu | null;
+        if (result) return result;
+      } catch (err) {
+        console.error('Failed to fetch menu', err);
+      }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
 
@@ -224,14 +228,16 @@ export const TitleBar = (props: TitleBarProps) => {
     await props.ipc.invoke('window-close');
   };
 
-  const refreshMenuItem = async (originalMenu: Menu, commandId: number) => {
+  // Mutates targetMenu in place, so callers control how many times the
+  // (potentially large) menu tree gets cloned - once per click, not once
+  // per item when updating a whole radio group.
+  const applyMenuItemUpdate = async (targetMenu: Menu, commandId: number) => {
     const menuItem = (await window.ipcRenderer.invoke(
       'get-menu-by-id',
       commandId,
     )) as MenuItem | null;
 
-    const newMenu = structuredClone(originalMenu);
-    const stack = [...(newMenu?.items ?? [])];
+    const stack = [...(targetMenu?.items ?? [])];
     let now: MenuItem | undefined = stack.pop();
     while (now) {
       const index =
@@ -248,8 +254,6 @@ export const TitleBar = (props: TitleBarProps) => {
 
       now = stack.pop();
     }
-
-    return newMenu;
   };
 
   const handleItemClick = async (
@@ -259,17 +263,17 @@ export const TitleBar = (props: TitleBarProps) => {
     const menuData = menu();
     if (!menuData) return;
 
-    if (Array.isArray(radioGroup)) {
-      let newMenu = menuData;
-      for (const item of radioGroup) {
-        newMenu = await refreshMenuItem(newMenu, item.commandId);
-      }
+    const newMenu = structuredClone(menuData);
 
-      setMenu(newMenu);
-      return;
+    if (Array.isArray(radioGroup)) {
+      for (const item of radioGroup) {
+        await applyMenuItemUpdate(newMenu, item.commandId);
+      }
+    } else {
+      await applyMenuItemUpdate(newMenu, commandId);
     }
 
-    setMenu(await refreshMenuItem(menuData, commandId));
+    setMenu(newMenu);
   };
 
   const listener = (e: MouseEvent) => {

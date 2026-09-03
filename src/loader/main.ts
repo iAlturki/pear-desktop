@@ -37,6 +37,15 @@ const withTimeout = <T>(
     );
   });
 
+// createContext() builds a fresh context object on every lifecycle call, so
+// this needs to live at module scope to let a stop() (given a new context)
+// remove a listener that was registered via a start() (given an earlier,
+// different context) for the same plugin id.
+const ipcListenerWrappers = new WeakMap<
+  CallableFunction,
+  (event: Electron.IpcMainEvent, ...args: unknown[]) => void
+>();
+
 const createContext = (
   id: string,
   win: BrowserWindow,
@@ -63,10 +72,19 @@ const createContext = (
       ipcMain.handle(event, (_, ...args: unknown[]) => listener(...args));
     },
     on: (event: string, listener: CallableFunction) => {
-      ipcMain.on(event, (_, ...args: unknown[]) => {
+      const wrapped = (_: Electron.IpcMainEvent, ...args: unknown[]) => {
         // oxlint-disable-next-line typescript/no-unsafe-call
         listener(...args);
-      });
+      };
+      ipcListenerWrappers.set(listener, wrapped);
+      ipcMain.on(event, wrapped);
+    },
+    off: (event: string, listener: CallableFunction) => {
+      const wrapped = ipcListenerWrappers.get(listener);
+      if (wrapped) {
+        ipcMain.removeListener(event, wrapped);
+        ipcListenerWrappers.delete(listener);
+      }
     },
     removeHandler: (event: string) => {
       ipcMain.removeHandler(event);
