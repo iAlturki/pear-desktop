@@ -20,6 +20,27 @@ interface SyncedLineProps {
   status: 'upcoming' | 'current' | 'previous';
 }
 
+// No lyrics provider (LRCLib, MusixMatch, LyricsGenius, Megalobiz, YTMusic)
+// gives per-word timestamps - only one timestamp + duration for the whole
+// line - so there's no way to know exactly when each word is sung. This
+// estimates each word's start offset within the line proportionally by
+// character length (longer words are assumed to take longer to sing),
+// which tracks a line's actual pace far better than a fixed per-word delay.
+const computeWordStartOffsets = (
+  words: string[],
+  lineDurationMs: number,
+): number[] => {
+  const weights = words.map((word) => Math.max(1, word.length));
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0) || 1;
+
+  let cumulativeWeight = 0;
+  return weights.map((weight) => {
+    const offset = (cumulativeWeight / totalWeight) * lineDurationMs;
+    cumulativeWeight += weight;
+    return offset;
+  });
+};
+
 const EmptyLine = (props: SyncedLineProps) => {
   const states = createMemo(() => {
     const defaultText = config()?.defaultTextString ?? '';
@@ -103,6 +124,46 @@ export const SyncedLine = (props: SyncedLineProps) => {
     });
   });
 
+  // How many words (from the start) should currently be lit up, based on
+  // actual elapsed playback time within the line - not a fixed animation
+  // timeline, so it stays correct through seeking/pausing and reflects the
+  // line's real pace instead of a uniform per-word delay.
+  const words = createMemo(() => text().split(' '));
+  const wordOffsets = createMemo(() =>
+    computeWordStartOffsets(words(), props.line.duration),
+  );
+  const activeWordCount = createMemo(() => {
+    if (props.status === 'previous') return words().length;
+    if (props.status !== 'current') return 0;
+
+    const elapsed = currentTime() - props.line.timeInMs;
+    const offsets = wordOffsets();
+    let count = 0;
+    for (const offset of offsets) {
+      if (elapsed < offset) break;
+      count++;
+    }
+    return count;
+  });
+
+  const romanizationWords = createMemo(() => romanization().split(' '));
+  const romanizationOffsets = createMemo(() =>
+    computeWordStartOffsets(romanizationWords(), props.line.duration),
+  );
+  const activeRomanizationWordCount = createMemo(() => {
+    if (props.status === 'previous') return romanizationWords().length;
+    if (props.status !== 'current') return 0;
+
+    const elapsed = currentTime() - props.line.timeInMs;
+    const offsets = romanizationOffsets();
+    let count = 0;
+    for (const offset of offsets) {
+      if (elapsed < offset) break;
+      count++;
+    }
+    return count;
+  });
+
   return (
     <Show fallback={<EmptyLine {...props} />} when={text()}>
       <div
@@ -134,14 +195,11 @@ export const SyncedLine = (props: SyncedLineProps) => {
             style={{ 'display': 'flex', 'flex-direction': 'column' }}
           >
             <span>
-              <For each={text().split(' ')}>
+              <For each={words()}>
                 {(word, index) => {
                   return (
                     <span
-                      style={{
-                        'transition-delay': `${index() * 0.05}s`,
-                        'animation-delay': `${index() * 0.05}s`,
-                      }}
+                      classList={{ 'word-active': index() < activeWordCount() }}
                     >
                       <yt-formatted-string
                         text={{
@@ -161,13 +219,13 @@ export const SyncedLine = (props: SyncedLineProps) => {
               }
             >
               <span class="romaji">
-                <For each={romanization().split(' ')}>
+                <For each={romanizationWords()}>
                   {(word, index) => {
                     return (
                       <span
-                        style={{
-                          'transition-delay': `${index() * 0.05}s`,
-                          'animation-delay': `${index() * 0.05}s`,
+                        classList={{
+                          'word-active':
+                            index() < activeRomanizationWordCount(),
                         }}
                       >
                         <yt-formatted-string

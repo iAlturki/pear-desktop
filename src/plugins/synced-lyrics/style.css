@@ -156,7 +156,10 @@
   translate: var(--lyrics-active-offset);
 }
 
-.current .text-lyrics > span > span {
+/* Only words that have actually started (per estimated per-word timing in
+   SyncedLine.tsx) light up - not the whole line at once - so the line
+   progressively reveals word by word instead of flashing on together. */
+.current .text-lyrics > span > span.word-active {
   opacity: var(--lyrics-active-opacity);
   animation: var(--lyrics-animations);
 }
