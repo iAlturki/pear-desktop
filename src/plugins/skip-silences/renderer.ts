@@ -14,6 +14,12 @@ const speakingHistory = Array.from({ length: history }).fill(0) as number[];
 
 let playOrSeekHandler: (() => void) | undefined;
 
+// 'peard:audio-can-play' fires once per song, but each firing previously
+// started its own recursive setTimeout loop that ran forever with no way
+// to cancel it - bumping this on every new firing (or on unload) lets a
+// stale loop detect it's been superseded and stop rescheduling itself.
+let currentGeneration = 0;
+
 const getMaxVolume = (
   analyser: AnalyserNode,
   fftBins: Float32Array<ArrayBuffer>,
@@ -31,6 +37,7 @@ const getMaxVolume = (
 };
 
 const audioCanPlayListener = (e: CustomEvent<Compressor>) => {
+  const generation = ++currentGeneration;
   const video = document.querySelector('video');
   const { audioContext } = e.detail;
   const sourceNode = e.detail.audioSource;
@@ -46,6 +53,8 @@ const audioCanPlayListener = (e: CustomEvent<Compressor>) => {
 
   const looper = () => {
     setTimeout(() => {
+      if (generation !== currentGeneration) return;
+
       const currentVolume = getMaxVolume(analyser, fftBins);
 
       let history = 0;
@@ -124,6 +133,7 @@ export const onRendererLoad = async ({
 };
 
 export const onRendererUnload = () => {
+  currentGeneration++;
   document.removeEventListener('peard:audio-can-play', audioCanPlayListener);
 
   if (playOrSeekHandler) {

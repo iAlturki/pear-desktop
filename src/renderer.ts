@@ -4,6 +4,7 @@ import 'mdui/mdui.css';
 import 'mdui';
 
 import { loadI18n, setLanguage, t as i18t } from '@/i18n';
+import { LoggerPrefix } from '@/utils';
 import {
   defaultTrustedTypePolicy,
   registerWindowDefaultTrustedTypePolicy,
@@ -240,6 +241,9 @@ async function onApiLoaded() {
               },
             });
           }
+        })
+        .catch((err: unknown) => {
+          console.error(LoggerPrefix, 'Failed to add song to queue', err);
         });
     },
   );
@@ -283,29 +287,44 @@ async function onApiLoaded() {
 
   window.ipcRenderer.on(
     'peard:search',
-    async (_, query: string, params?: string, continuation?: string) => {
-      const app = document.querySelector<MusicPlayerAppElement>('ytmusic-app');
-      const searchBox =
-        document.querySelector<SearchBoxElement>('ytmusic-search-box');
+    async (
+      _,
+      requestId: string,
+      query: string,
+      params?: string,
+      continuation?: string,
+    ) => {
+      try {
+        const app =
+          document.querySelector<MusicPlayerAppElement>('ytmusic-app');
+        const searchBox =
+          document.querySelector<SearchBoxElement>('ytmusic-search-box');
 
-      if (!app || !searchBox) return;
-
-      const result = await app.networkManager.fetch<
-        unknown,
-        {
-          query: string;
-          params?: string;
-          continuation?: string;
-          suggestStats?: unknown;
+        if (!app || !searchBox) {
+          window.ipcRenderer.send('peard:search-results', requestId, null);
+          return;
         }
-      >('/search', {
-        query,
-        params,
-        continuation,
-        suggestStats: searchBox.getSearchboxStats(),
-      });
 
-      window.ipcRenderer.send('peard:search-results', result);
+        const result = await app.networkManager.fetch<
+          unknown,
+          {
+            query: string;
+            params?: string;
+            continuation?: string;
+            suggestStats?: unknown;
+          }
+        >('/search', {
+          query,
+          params,
+          continuation,
+          suggestStats: searchBox.getSearchboxStats(),
+        });
+
+        window.ipcRenderer.send('peard:search-results', requestId, result);
+      } catch (err) {
+        console.error(LoggerPrefix, 'Search request failed', err);
+        window.ipcRenderer.send('peard:search-results', requestId, null);
+      }
     },
   );
 
@@ -536,4 +555,9 @@ const initObserver = async () => {
   });
 };
 
-initObserver().then(preload).then(main);
+initObserver()
+  .then(preload)
+  .then(main)
+  .catch((err: unknown) => {
+    console.error(LoggerPrefix, 'Renderer startup failed', err);
+  });

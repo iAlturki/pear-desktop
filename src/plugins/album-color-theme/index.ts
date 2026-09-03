@@ -6,6 +6,8 @@ import { createPlugin } from '@/utils';
 
 import style from './style.css?inline';
 
+import type { VideoDataChanged } from '@/types/video-data-changed';
+
 const COLOR_KEY = '--ytmusic-album-color';
 const DARK_COLOR_KEY = '--ytmusic-album-color-dark';
 const RATIO_KEY = '--ytmusic-album-color-ratio';
@@ -79,6 +81,9 @@ export default createPlugin({
     ytmusicAppLayout: null as HTMLElement | null,
     color: null as ColorInstance | null,
     darkColor: null as ColorInstance | null,
+    videoDataChangeHandler: null as
+      | ((event: CustomEvent<VideoDataChanged>) => void)
+      | null,
 
     start() {
       this.playerPage = document.querySelector<HTMLElement>('#player-page');
@@ -102,7 +107,7 @@ export default createPlugin({
 
       const fastAverageColor = new FastAverageColor();
 
-      document.addEventListener('videodatachange', async (event) => {
+      this.videoDataChangeHandler = async (event) => {
         if (event.detail.name !== 'dataloaded') return;
 
         const playerResponse = playerApi.getPlayerResponse();
@@ -151,7 +156,17 @@ export default createPlugin({
           }
         }
         (this as Renderer).updateColor(alpha ?? 1);
-      });
+      };
+      document.addEventListener('videodatachange', this.videoDataChangeHandler);
+    },
+    stop() {
+      if (this.videoDataChangeHandler) {
+        document.removeEventListener(
+          'videodatachange',
+          this.videoDataChangeHandler,
+        );
+        this.videoDataChangeHandler = null;
+      }
     },
     onConfigChange(config) {
       document.documentElement.style.setProperty(

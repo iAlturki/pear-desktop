@@ -187,11 +187,46 @@ function onClosed() {
   mainWindow = null;
 }
 
+// Registered once at module scope (not per createMainWindow() call) so
+// re-creating the window (e.g. the macOS 'activate' handler) doesn't
+// accumulate one more app-level listener every time.
+app.on('render-process-gone', (_event, _webContents, details) => {
+  if (mainWindow) {
+    showUnresponsiveDialog(mainWindow, details);
+  }
+});
+
 ipcMain.handle('peard:get-main-plugin-names', async () =>
   Object.keys(await mainPlugins()),
 );
 
+// Serializes plugin enable/disable transitions per plugin id, so a rapid
+// toggle can't have its disable silently skipped by a still-in-flight
+// enable (or vice versa) racing ahead of it.
+const pendingPluginOps: Record<string, Promise<void>> = {};
+const serializePluginOp = (id: string, task: () => Promise<void>) => {
+  const run = () =>
+    task().catch((err: unknown) => {
+      console.error(LoggerPrefix, `Plugin operation failed for "${id}"`, err);
+    });
+  pendingPluginOps[id] = (pendingPluginOps[id] ?? Promise.resolve()).then(
+    run,
+    run,
+  );
+  return pendingPluginOps[id];
+};
+
+// initHook is re-run every time a window is (re)created (e.g. the macOS
+// 'activate' handler), but its ipcMain.handle/config.watch registrations
+// are process-global and must only ever be set up once.
+let initHookRan = false;
+let initHookWin: BrowserWindow;
+
 const initHook = async (win: BrowserWindow) => {
+  initHookWin = win;
+  if (initHookRan) return;
+  initHookRan = true;
+
   const allPluginStubs = await allPlugins();
 
   ipcMain.handle(
@@ -227,19 +262,21 @@ const initHook = async (win: BrowserWindow) => {
         ) as PluginConfig;
 
         if (config.enabled !== oldConfig?.enabled) {
-          if (config.enabled) {
-            win.webContents.send('plugin:enable', id);
-            ipcMain.emit('plugin:enable', id);
-            forceLoadMainPlugin(id, win);
-          } else {
-            win.webContents.send('plugin:unload', id);
-            ipcMain.emit('plugin:unload', id);
-            forceUnloadMainPlugin(id, win);
-          }
+          const eventName = config.enabled ? 'plugin:enable' : 'plugin:unload';
+          initHookWin.webContents.send(eventName, id);
+          ipcMain.emit(eventName, id);
 
-          if (allPluginStubs[id]?.restartNeeded) {
-            showNeedToRestartDialog(id);
-          }
+          serializePluginOp(id, async () => {
+            if (config.enabled) {
+              await forceLoadMainPlugin(id, initHookWin);
+            } else {
+              await forceUnloadMainPlugin(id, initHookWin);
+            }
+
+            if (allPluginStubs[id]?.restartNeeded) {
+              await showNeedToRestartDialog(id);
+            }
+          });
         }
 
         const mainPlugin = getAllLoadedMainPlugins()[id];
@@ -252,7 +289,7 @@ const initHook = async (win: BrowserWindow) => {
           }
         }
 
-        win.webContents.send('config-changed', id, config);
+        initHookWin.webContents.send('config-changed', id, config);
       }
     });
   });
@@ -403,10 +440,10 @@ async function createMainWindow() {
     const scaledY = windowY;
 
     if (
-      scaledX + (scaledWidth / 2) < display.bounds.x - 8 || // Left
-      scaledX + (scaledWidth / 2) > display.bounds.x + display.bounds.width || // Right
+      scaledX + scaledWidth / 2 < display.bounds.x - 8 || // Left
+      scaledX + scaledWidth / 2 > display.bounds.x + display.bounds.width || // Right
       scaledY < display.bounds.y - 8 || // Top
-      scaledY + (scaledHeight / 2) > display.bounds.y + display.bounds.height // Bottom
+      scaledY + scaledHeight / 2 > display.bounds.y + display.bounds.height // Bottom
     ) {
       // Window is offscreen
       if (is.dev()) {
@@ -484,10 +521,6 @@ async function createMainWindow() {
       savedTimeouts[key] = undefined;
     }, 600);
   }
-
-  app.on('render-process-gone', (_event, _webContents, details) => {
-    showUnresponsiveDialog(win, details);
-  });
 
   win.once('ready-to-show', () => {
     if (config.get('options.appVisible')) {

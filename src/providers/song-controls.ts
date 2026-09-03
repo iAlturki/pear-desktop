@@ -140,11 +140,33 @@ export const getSongControls = (win: BrowserWindow) => {
     clearQueue: () => win.webContents.send('peard:clear-queue'),
 
     search: (query: string, params?: string, continuation?: string) =>
-      new Promise((resolve) => {
-        ipcMain.once('peard:search-results', (_, result) => {
+      new Promise((resolve, reject) => {
+        const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+        const timeout = setTimeout(() => {
+          ipcMain.removeListener('peard:search-results', listener);
+          reject(new Error('Search request timed out'));
+        }, 15_000);
+
+        const listener = (
+          _: unknown,
+          resultRequestId: string,
+          result: unknown,
+        ) => {
+          if (resultRequestId !== requestId) return;
+          clearTimeout(timeout);
+          ipcMain.removeListener('peard:search-results', listener);
           resolve(result as string);
-        });
-        win.webContents.send('peard:search', query, params, continuation);
+        };
+        ipcMain.on('peard:search-results', listener);
+
+        win.webContents.send(
+          'peard:search',
+          requestId,
+          query,
+          params,
+          continuation,
+        );
       }),
   };
 };

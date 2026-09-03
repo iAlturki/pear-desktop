@@ -134,7 +134,9 @@ export const stopPlugin = async <Config extends PluginConfig>(
   options: Options<Config>,
 ) => {
   if (!def || !def[options.ctx]) return false;
-  if (typeof def[options.ctx] === 'function') return false;
+  // A function-style lifecycle has no separate stop hook - that's not a
+  // failure to stop, there's simply nothing to do (same as no `stop` below).
+  if (typeof def[options.ctx] === 'function') return null;
 
   const defCtx = def[options.ctx] as
     | { stop: PluginLifecycleSimple<Config, unknown> }

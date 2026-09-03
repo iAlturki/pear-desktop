@@ -26,6 +26,7 @@ const roundToTwo = (n: number) => Math.round(n * 1e2) / 1e2;
 
 const [speed, setSpeed] = createSignal(1);
 const sliderContainer = document.createElement('div');
+let popupObserver: MutationObserver | undefined;
 
 export const onPlayerApiReady = () => {
   const observePopupContainer = () => {
@@ -81,7 +82,8 @@ export const onPlayerApiReady = () => {
       sliderContainer,
     );
 
-    const observer = new MutationObserver(() => {
+    popupObserver?.disconnect();
+    popupObserver = new MutationObserver(() => {
       const menu = getSongMenu();
 
       if (
@@ -96,7 +98,7 @@ export const onPlayerApiReady = () => {
 
     const popupContainer = document.querySelector('ytmusic-popup-container');
     if (popupContainer) {
-      observer.observe(popupContainer, {
+      popupObserver.observe(popupContainer, {
         childList: true,
         subtree: true,
       });
@@ -121,5 +123,7 @@ export const onUnload = () => {
     video.removeEventListener('ratechange', forcePlaybackRate);
     video.removeEventListener('peard:src-changed', forcePlaybackRate);
   }
+  popupObserver?.disconnect();
+  popupObserver = undefined;
   getSongMenu()?.removeChild(sliderContainer);
 };

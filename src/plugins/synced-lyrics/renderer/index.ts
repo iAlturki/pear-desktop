@@ -85,7 +85,21 @@ export const renderer = createRenderer<
     });
   },
 
-  stop() {
+  stop(ctx: RendererContext<SyncedLyricsPluginConfig>) {
+    ctx.ipc.removeAllListeners('peard:update-song-info');
+
+    if (_ytAPI) {
+      _ytAPI.removeEventListener('videodatachange', this.videoDataChange);
+      _ytAPI = null;
+    }
+
+    this.observer?.disconnect();
+
+    if (this.updateTimestampInterval) {
+      clearInterval(this.updateTimestampInterval);
+      this.updateTimestampInterval = undefined;
+    }
+
     disposeReactiveRoot();
   },
 });

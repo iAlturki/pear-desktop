@@ -14,6 +14,29 @@ const loadedPluginMap: Record<
   PluginDef<unknown, unknown, unknown>
 > = {};
 
+// A single misbehaving plugin's start()/stop() must never be able to hang
+// app startup/shutdown forever - bound how long we wait for it.
+const PLUGIN_LIFECYCLE_TIMEOUT_MS = 15_000;
+
+const withTimeout = <T>(
+  promise: Promise<T>,
+  ms: number,
+  onTimeout: () => T,
+): Promise<T> =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve(onTimeout()), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err: unknown) => {
+        clearTimeout(timer);
+        reject(err as Error);
+      },
+    );
+  });
+
 const createContext = (
   id: string,
   win: BrowserWindow,
@@ -61,16 +84,21 @@ export const forceUnloadMainPlugin = async (
   if (!plugin) return;
 
   try {
-    const hasStopped = await stopPlugin(id, plugin, {
-      ctx: 'backend',
-      context: createContext(id, win),
-    });
-    if (
-      hasStopped ||
-      (hasStopped === null &&
-        typeof plugin.backend !== 'function' &&
-        plugin.backend)
-    ) {
+    const hasStopped = await withTimeout(
+      stopPlugin(id, plugin, {
+        ctx: 'backend',
+        context: createContext(id, win),
+      }),
+      PLUGIN_LIFECYCLE_TIMEOUT_MS,
+      () => {
+        console.error(
+          LoggerPrefix,
+          `Plugin "${id}" backend stop() timed out after ${PLUGIN_LIFECYCLE_TIMEOUT_MS}ms - continuing.`,
+        );
+        return false;
+      },
+    );
+    if (hasStopped || hasStopped === null) {
       delete loadedPluginMap[id];
       console.log(
         LoggerPrefix,
@@ -102,10 +130,20 @@ export const forceLoadMainPlugin = async (
   if (!plugin) return;
 
   try {
-    const hasStarted = await startPlugin(id, plugin, {
-      ctx: 'backend',
-      context: createContext(id, win),
-    });
+    const hasStarted = await withTimeout(
+      startPlugin(id, plugin, {
+        ctx: 'backend',
+        context: createContext(id, win),
+      }),
+      PLUGIN_LIFECYCLE_TIMEOUT_MS,
+      () => {
+        console.error(
+          LoggerPrefix,
+          `Plugin "${id}" backend start() timed out after ${PLUGIN_LIFECYCLE_TIMEOUT_MS}ms - continuing without it.`,
+        );
+        return false;
+      },
+    );
     if (
       hasStarted ||
       (hasStarted === null &&

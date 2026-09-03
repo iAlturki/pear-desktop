@@ -188,7 +188,9 @@ export default createPlugin<
 
         this.isFading = true;
         video.volume = 0;
-        this.fader!.setFadeDuration(this.config.fadeInDuration || 1);
+        this.fader!.setFadeDuration(
+          Math.max(1, this.config.fadeInDuration || 0),
+        );
         this.fader!.fadeTo(this.userVolume, () => {
           this.isFading = false;
         });
@@ -199,13 +201,22 @@ export default createPlugin<
       // fade completes, since a paused element no longer produces audio.
       this.originalPauseVideo = api.pauseVideo.bind(api);
       api.pauseVideo = () => {
-        if (!this.config?.enabled || !this.config.fadeOnPause || video.paused) {
+        if (
+          !this.config?.enabled ||
+          !this.config.fadeOnPause ||
+          video.paused ||
+          this.isFading
+        ) {
+          // If a fade (e.g. a pending skip) is already in flight, don't
+          // stomp on it and lose its callback - just pause immediately.
           this.originalPauseVideo!();
           return;
         }
 
         this.isFading = true;
-        this.fader!.setFadeDuration(this.config.fadeOutDuration || 1);
+        this.fader!.setFadeDuration(
+          Math.max(1, this.config.fadeOutDuration || 0),
+        );
         this.fader!.fadeOut(() => {
           this.isFading = false;
           this.originalPauseVideo!();
@@ -237,7 +248,9 @@ export default createPlugin<
         event.stopImmediatePropagation();
 
         this.isFading = true;
-        this.fader!.setFadeDuration(this.config.fadeOutDuration || 1);
+        this.fader!.setFadeDuration(
+          Math.max(1, this.config.fadeOutDuration || 0),
+        );
         this.fader!.fadeOut(() => {
           this.isFading = false;
           document.removeEventListener('click', this.skipClickListener!, true);
@@ -267,6 +280,9 @@ export default createPlugin<
         this.api.pauseVideo = this.originalPauseVideo;
       }
       this.fader?.stop();
+      // fader.stop() abandons any in-flight fade without invoking its
+      // callback, so this flag must be reset here or it can get stuck.
+      this.isFading = false;
     },
   },
 });

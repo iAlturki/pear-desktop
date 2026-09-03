@@ -53,34 +53,50 @@ export default createPlugin({
     ];
   },
   renderer: {
+    audioCanPlayHandler: null as
+      | ((event: CustomEvent<Compressor>) => void)
+      | null,
     async start({ getConfig }) {
       const config = await getConfig();
 
+      this.audioCanPlayHandler = ({
+        detail: { audioSource, audioContext },
+      }) => {
+        const filtersToApply = config.filters.concat(
+          defaultPresets
+            .filter((preset) => config.presets[preset])
+            .map((preset) => presetConfigs[preset]),
+        );
+        filtersToApply.forEach((filter) => {
+          const biquadFilter = audioContext.createBiquadFilter();
+          biquadFilter.type = filter.type;
+          biquadFilter.frequency.value = filter.frequency; // filter frequency in Hz
+          biquadFilter.Q.value = filter.Q;
+          biquadFilter.gain.value = filter.gain; // filter gain in dB
+
+          audioSource.connect(biquadFilter);
+          biquadFilter.connect(audioContext.destination);
+
+          appliedFilters.push(biquadFilter);
+        });
+      };
       document.addEventListener(
         'peard:audio-can-play',
-        ({ detail: { audioSource, audioContext } }) => {
-          const filtersToApply = config.filters.concat(
-            defaultPresets
-              .filter((preset) => config.presets[preset])
-              .map((preset) => presetConfigs[preset]),
-          );
-          filtersToApply.forEach((filter) => {
-            const biquadFilter = audioContext.createBiquadFilter();
-            biquadFilter.type = filter.type;
-            biquadFilter.frequency.value = filter.frequency; // filter frequency in Hz
-            biquadFilter.Q.value = filter.Q;
-            biquadFilter.gain.value = filter.gain; // filter gain in dB
-
-            audioSource.connect(biquadFilter);
-            biquadFilter.connect(audioContext.destination);
-
-            appliedFilters.push(biquadFilter);
-          });
+        this.audioCanPlayHandler,
+        {
+          once: true,
+          passive: true,
         },
-        { once: true, passive: true },
       );
     },
     stop() {
+      if (this.audioCanPlayHandler) {
+        document.removeEventListener(
+          'peard:audio-can-play',
+          this.audioCanPlayHandler,
+        );
+        this.audioCanPlayHandler = null;
+      }
       appliedFilters.forEach((filter) => filter.disconnect());
       appliedFilters = [];
     },
