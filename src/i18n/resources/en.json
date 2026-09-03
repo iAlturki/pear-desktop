@@ -222,10 +222,6 @@
       },
       "name": "Ad Skip"
     },
-    "ad-speedup": {
-      "description": "If an ad play it mutes the audio and sets playback speed to 16x",
-      "name": "Ad Speedup"
-    },
     "album-actions": {
       "description": "Adds Undislike, Dislike, Like, and Unlike buttons to apply this to all songs in a playlist or album",
       "name": "Album Actions"
@@ -427,28 +423,6 @@
     "compact-sidebar": {
       "description": "Always set the sidebar in compact mode",
       "name": "Compact Sidebar"
-    },
-    "crossfade": {
-      "description": "Crossfade between songs",
-      "menu": {
-        "advanced": "Advanced"
-      },
-      "name": "Crossfade [Beta]",
-      "prompt": {
-        "options": {
-          "multi-input": {
-            "fade-in-duration": "Fade in duration (ms)",
-            "fade-out-duration": "Fade out duration (ms)",
-            "fade-scaling": {
-              "label": "Fade scaling",
-              "linear": "Linear",
-              "logarithmic": "Logarithmic"
-            },
-            "seconds-before-end": "Crossfade N seconds before end"
-          },
-          "title": "Crossfade options"
-        }
-      }
     },
     "custom-output-device": {
       "description": "Configure a custom output media device for songs",

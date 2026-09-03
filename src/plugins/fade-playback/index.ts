@@ -1,7 +1,7 @@
 import prompt from 'custom-electron-prompt';
 
 import { t } from '@/i18n';
-import { VolumeFader } from '@/plugins/crossfade/fader';
+import { VolumeFader } from '@/plugins/utils/renderer/volume-fader';
 import promptOptions from '@/providers/prompt-options';
 import { createPlugin } from '@/utils';
 
