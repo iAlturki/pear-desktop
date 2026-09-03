@@ -37,6 +37,7 @@ export default createPlugin({
     unregister: null as (() => void) | null,
     update: null as (() => void) | null,
     interval: null as NodeJS.Timeout | null,
+    observer: null as MutationObserver | null,
     lastMediaType: null as 'video' | 'image' | null,
     lastVideoSource: null as string | null,
     lastImageSource: null as string | null,
@@ -128,7 +129,8 @@ export default createPlugin({
             if (lastImageData) {
               const frameOffset =
                 (1 / this.buffer) * (1000 / this.interpolationTime);
-              context.globalAlpha = 1 - (frameOffset * 2); // because of alpha value must be < 1
+              const doubledFrameOffset = frameOffset * 2;
+              context.globalAlpha = 1 - doubledFrameOffset; // because of alpha value must be < 1
               context.putImageData(lastImageData, 0, 0);
               context.globalAlpha = frameOffset;
             }
@@ -239,7 +241,8 @@ export default createPlugin({
       };
 
       /* needed for switching between different views (e.g. miniplayer) */
-      const observer = new MutationObserver((mutationsList) => {
+      this.observer?.disconnect();
+      this.observer = new MutationObserver((mutationsList) => {
         for (const mutation of mutationsList) {
           if (mutation.type === 'attributes') {
             injectBlurElement(true);
@@ -249,7 +252,7 @@ export default createPlugin({
       });
 
       if (playerPage) {
-        observer.observe(playerPage, { attributes: true });
+        this.observer.observe(playerPage, { attributes: true });
 
         /* fallback ticker for when the observer isn't triggered */
         this.interval = setInterval(injectBlurElement, 1000);
@@ -270,6 +273,8 @@ export default createPlugin({
       this.update = null;
       this.unregister?.();
       if (this.interval) clearInterval(this.interval);
+      this.observer?.disconnect();
+      this.observer = null;
     },
   },
 });

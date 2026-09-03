@@ -45,6 +45,25 @@ export interface SongInfo {
   tags?: string[];
 }
 
+// Avoids re-doing a HEAD request + image fetch/decode for a track that was
+// already fetched moments earlier (replaying, hitting Previous, etc).
+const MAX_IMAGE_CACHE_SIZE = 50;
+const imageCache = new Map<
+  string,
+  { imageSrc: string; image: Electron.NativeImage }
+>();
+const cacheImage = (
+  videoId: string,
+  imageSrc: string,
+  image: Electron.NativeImage,
+) => {
+  imageCache.set(videoId, { imageSrc, image });
+  if (imageCache.size > MAX_IMAGE_CACHE_SIZE) {
+    const oldestKey = imageCache.keys().next().value;
+    if (oldestKey !== undefined) imageCache.delete(oldestKey);
+  }
+};
+
 // Grab the native image using the src
 export const getImage = async (src: string): Promise<Electron.NativeImage> => {
   const result = await net.fetch(src);
@@ -151,17 +170,30 @@ const handleData = async (
         break;
     }
 
-    const thumbnails = videoDetails.thumbnail?.thumbnails;
-    songInfo.imageSrc = thumbnails?.at(-1)?.url?.split('?')?.at(0);
+    const cached = songInfo.videoId
+      ? imageCache.get(songInfo.videoId)
+      : undefined;
+    if (cached) {
+      songInfo.imageSrc = cached.imageSrc;
+      songInfo.image = cached.image;
+    } else {
+      const thumbnails = videoDetails.thumbnail?.thumbnails;
+      songInfo.imageSrc = thumbnails?.at(-1)?.url?.split('?')?.at(0);
 
-    if (
-      songInfo.imageSrc &&
-      !(await net.fetch(songInfo.imageSrc, { method: 'HEAD' })).ok
-    ) {
-      songInfo.imageSrc = thumbnails.at(-1)?.url;
+      if (
+        songInfo.imageSrc &&
+        !(await net.fetch(songInfo.imageSrc, { method: 'HEAD' })).ok
+      ) {
+        songInfo.imageSrc = thumbnails?.at(-1)?.url;
+      }
+
+      if (songInfo.imageSrc) {
+        songInfo.image = await getImage(songInfo.imageSrc);
+        if (songInfo.videoId) {
+          cacheImage(songInfo.videoId, songInfo.imageSrc, songInfo.image);
+        }
+      }
     }
-
-    if (songInfo.imageSrc) songInfo.image = await getImage(songInfo.imageSrc);
 
     win.webContents.send('peard:update-song-info', songInfo);
   }

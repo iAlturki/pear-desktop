@@ -160,6 +160,9 @@ export default createPlugin({
       audioSource: null,
       observer: null,
     } as RenderProps,
+    audioCanPlayHandler: null as
+      | ((event: CustomEvent<Compressor>) => Promise<void>)
+      | null,
 
     createVisualizer(
       this: { props: RenderProps },
@@ -167,9 +170,15 @@ export default createPlugin({
     ) {
       this.props.visualizerInstance?.destroy();
       this.props.visualizerInstance = null;
+      this.props.observer?.disconnect();
+      this.props.observer = null;
+
+      if (!config.enabled) {
+        document.querySelector<HTMLCanvasElement>('#visualizer')?.remove();
+        return;
+      }
 
       if (!this.props.audioContext || !this.props.audioSource) return;
-      if (!config.enabled) return;
 
       const video = document.querySelector<
         HTMLVideoElement & { captureStream(): MediaStream }
@@ -223,7 +232,6 @@ export default createPlugin({
       };
       resizeVisualizer();
 
-      this.props.observer?.disconnect();
       this.props.observer = new ResizeObserver(resizeVisualizer);
       this.props.observer.observe(visualizerContainer);
     },
@@ -233,15 +241,30 @@ export default createPlugin({
     },
 
     onPlayerApiReady(_, { getConfig }) {
+      this.audioCanPlayHandler = async (e) => {
+        this.props.audioContext = e.detail.audioContext;
+        this.props.audioSource = e.detail.audioSource;
+        this.createVisualizer(await getConfig());
+      };
       document.addEventListener(
         'peard:audio-can-play',
-        async (e) => {
-          this.props.audioContext = e.detail.audioContext;
-          this.props.audioSource = e.detail.audioSource;
-          this.createVisualizer(await getConfig());
-        },
+        this.audioCanPlayHandler,
         { passive: true },
       );
+    },
+    stop() {
+      if (this.audioCanPlayHandler) {
+        document.removeEventListener(
+          'peard:audio-can-play',
+          this.audioCanPlayHandler,
+        );
+        this.audioCanPlayHandler = null;
+      }
+      this.props.visualizerInstance?.destroy();
+      this.props.visualizerInstance = null;
+      this.props.observer?.disconnect();
+      this.props.observer = null;
+      document.querySelector<HTMLCanvasElement>('#visualizer')?.remove();
     },
   },
 });

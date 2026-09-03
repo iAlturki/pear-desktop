@@ -67,6 +67,10 @@ export const forceLoadMenuPlugin = async (id: string, win: BrowserWindow) => {
   }
 };
 
+export const forceUnloadMenuPlugin = (id: string) => {
+  delete menuTemplateMap[id];
+};
+
 export const loadAllMenuPlugins = async (win: BrowserWindow) => {
   const pluginConfigs = config.plugins.getPlugins();
 
@@ -78,6 +82,8 @@ export const loadAllMenuPlugins = async (win: BrowserWindow) => {
 
     if (config.enabled) {
       await forceLoadMenuPlugin(pluginId, win);
+    } else {
+      forceUnloadMenuPlugin(pluginId);
     }
   }
 };

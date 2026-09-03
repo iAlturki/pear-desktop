@@ -292,9 +292,14 @@ export function registerMPRIS(win: BrowserWindow) {
       }
     });
     player.on('open', (args: { uri: string }) => {
-      win.loadURL(args.uri).then(() => {
-        requestQueueInformation();
-      });
+      win
+        .loadURL(args.uri)
+        .then(() => {
+          requestQueueInformation();
+        })
+        .catch((err: unknown) => {
+          console.error(LoggerPrefix, 'Failed to open URI from MPRIS', err);
+        });
     });
 
     player.on('error', (error: Error) => {

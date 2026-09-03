@@ -14,6 +14,7 @@ export const backend = createBackend<
   {
     config?: DiscordPluginConfig;
     lastTimeUpdateSent: number;
+    beforeQuitListener?: () => void;
   },
   DiscordPluginConfig
 >({
@@ -49,13 +50,20 @@ export const backend = createBackend<
       ctx.ipc.send('peard:setup-time-changed-listener');
     });
 
-    app.on('before-quit', () => {
-      discordService?.cleanup();
-    });
+    if (!this.beforeQuitListener) {
+      this.beforeQuitListener = () => {
+        discordService?.cleanup();
+      };
+      app.on('before-quit', this.beforeQuitListener);
+    }
   },
 
   stop() {
     discordService?.cleanup();
+    if (this.beforeQuitListener) {
+      app.off('before-quit', this.beforeQuitListener);
+      this.beforeQuitListener = undefined;
+    }
   },
 
   onConfigChange(newConfig) {

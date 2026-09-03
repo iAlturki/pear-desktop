@@ -50,7 +50,11 @@ export const renderer = createRenderer<
 
   async onPlayerApiReady(_: MusicPlayer, context) {
     this.options = await context.getConfig();
-    await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    } catch (err) {
+      console.error('Failed to get user media for custom-output-device', err);
+    }
     navigator.mediaDevices.ondevicechange = async () =>
       await updateDeviceList(context);
 

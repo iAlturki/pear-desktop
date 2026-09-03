@@ -37,6 +37,7 @@ import {
   getAllLoadedMainPlugins,
   loadAllMainPlugins,
 } from '@/loader/main';
+import { forceUnloadMenuPlugin } from '@/loader/menu';
 import { refreshMenu, setApplicationMenu } from '@/menu';
 import musicPlayerCss from '@/music-player.css?inline';
 import { defaultAuthProxyConfig } from '@/plugins/auth-proxy-adapter/config';
@@ -271,6 +272,7 @@ const initHook = async (win: BrowserWindow) => {
               await forceLoadMainPlugin(id, initHookWin);
             } else {
               await forceUnloadMainPlugin(id, initHookWin);
+              forceUnloadMenuPlugin(id);
             }
 
             if (allPluginStubs[id]?.restartNeeded) {
@@ -438,12 +440,14 @@ async function createMainWindow() {
 
     const scaledX = windowX;
     const scaledY = windowY;
+    const halfScaledWidth = scaledWidth / 2;
+    const halfScaledHeight = scaledHeight / 2;
 
     if (
-      scaledX + scaledWidth / 2 < display.bounds.x - 8 || // Left
-      scaledX + scaledWidth / 2 > display.bounds.x + display.bounds.width || // Right
+      scaledX + halfScaledWidth < display.bounds.x - 8 || // Left
+      scaledX + halfScaledWidth > display.bounds.x + display.bounds.width || // Right
       scaledY < display.bounds.y - 8 || // Top
-      scaledY + scaledHeight / 2 > display.bounds.y + display.bounds.height // Bottom
+      scaledY + halfScaledHeight > display.bounds.y + display.bounds.height // Bottom
     ) {
       // Window is offscreen
       if (is.dev()) {

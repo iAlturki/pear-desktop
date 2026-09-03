@@ -153,11 +153,13 @@ export default createPlugin<
           ).length,
         };
         for (const [name, size] of Object.entries(counts)) {
+          const percentage = (size / listsLength) * 100;
+          const inverseMaskSize = `100% ${100 - percentage}%`;
           switch (name) {
             case 'dislike':
               if (size > 0) {
                 setShowDislike(true);
-                setDislikeMaskSize(`100% ${100 - ((size / listsLength) * 100)}%`);
+                setDislikeMaskSize(inverseMaskSize);
               } else {
                 setShowDislike(false);
               }
@@ -165,9 +167,7 @@ export default createPlugin<
             case 'undislike':
               if (size > 0) {
                 setShowUnDislike(true);
-                setUnDislikeMaskSize(
-                  `100% ${100 - ((size / listsLength) * 100)}%`,
-                );
+                setUnDislikeMaskSize(inverseMaskSize);
               } else {
                 setShowUnDislike(false);
               }
@@ -175,7 +175,7 @@ export default createPlugin<
             case 'like':
               if (size > 0) {
                 setShowLike(true);
-                setLikeMaskSize(`100% ${100 - ((size / listsLength) * 100)}%`);
+                setLikeMaskSize(inverseMaskSize);
               } else {
                 setShowLike(false);
               }
@@ -183,7 +183,7 @@ export default createPlugin<
             case 'unlike':
               if (size > 0) {
                 setShowUnLike(true);
-                setUnLikeMaskSize(`100% ${100 - ((size / listsLength) * 100)}%`);
+                setUnLikeMaskSize(inverseMaskSize);
               } else {
                 setShowUnLike(false);
               }
@@ -262,6 +262,7 @@ export default createPlugin<
     stop() {
       this.observer?.disconnect();
       this.changeObserver?.disconnect();
+      this.loadObserver?.disconnect();
       for (const button of document.querySelectorAll('.like-menu')) {
         button.remove();
       }

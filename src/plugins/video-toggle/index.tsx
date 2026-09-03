@@ -106,6 +106,11 @@ export default createPlugin({
 
   renderer: {
     config: null as VideoTogglePluginConfig | null,
+    switchButtonContainer: null as HTMLDivElement | null,
+    videoElement: null as HTMLVideoElement | null,
+    videoStartedHandler: null as (() => void) | null,
+    playbackModeObserver: null as MutationObserver | null,
+    thumbnailObserver: null as MutationObserver | null,
     applyStyleClass: (config: VideoTogglePluginConfig) => {
       if (config.forceHide) {
         document.body.classList.add('video-toggle-force-hide');
@@ -169,6 +174,8 @@ export default createPlugin({
       const video = document.querySelector<HTMLVideoElement>('video');
 
       const switchButtonContainer = document.createElement('div');
+      this.switchButtonContainer = switchButtonContainer;
+      this.videoElement = video;
       switchButtonContainer.id = 'ytmd-video-toggle-switch-button-container';
       switchButtonContainer.style.display = 'flex';
       render(
@@ -271,6 +278,7 @@ export default createPlugin({
        */
       const forcePlaybackMode = () => {
         if (player) {
+          this.playbackModeObserver?.disconnect();
           const playbackModeObserver = new MutationObserver((mutations) => {
             for (const mutation of mutations) {
               if (mutation.target instanceof HTMLElement) {
@@ -282,6 +290,7 @@ export default createPlugin({
               }
             }
           });
+          this.playbackModeObserver = playbackModeObserver;
           playbackModeObserver.observe(player, {
             attributeFilter: ['playback-mode'],
           });
@@ -289,6 +298,7 @@ export default createPlugin({
       };
 
       const observeThumbnail = () => {
+        this.thumbnailObserver?.disconnect();
         const playbackModeObserver = new MutationObserver((mutations) => {
           if (!player?.videoMode_) {
             return;
@@ -305,6 +315,7 @@ export default createPlugin({
             }
           }
         });
+        this.thumbnailObserver = playbackModeObserver;
         playbackModeObserver.observe(
           document.querySelector('#song-image #img.style-scope.yt-img-shadow')!,
           { attributeFilter: ['src'] },
@@ -323,6 +334,7 @@ export default createPlugin({
           if (video) {
             video.style.height = 'auto';
           }
+          this.videoStartedHandler = videoStarted;
           video?.addEventListener('peard:src-changed', videoStarted);
           observeThumbnail();
           videoStarted();
@@ -348,6 +360,22 @@ export default createPlugin({
     onConfigChange(newConfig) {
       this.config = newConfig;
       this.applyStyleClass(newConfig);
+    },
+    stop() {
+      this.playbackModeObserver?.disconnect();
+      this.playbackModeObserver = null;
+      this.thumbnailObserver?.disconnect();
+      this.thumbnailObserver = null;
+      if (this.videoElement && this.videoStartedHandler) {
+        this.videoElement.removeEventListener(
+          'peard:src-changed',
+          this.videoStartedHandler,
+        );
+      }
+      this.videoElement = null;
+      this.videoStartedHandler = null;
+      this.switchButtonContainer?.remove();
+      this.switchButtonContainer = null;
     },
   },
 });

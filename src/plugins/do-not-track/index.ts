@@ -76,12 +76,16 @@ export default createPlugin({
       this.mainWindow = window;
 
       if (config.blocker === blockers.WithBlocklists) {
-        await loadTrackerBlockerEngine(
+        // Don't block app startup on a blocklist download - let the window
+        // show immediately and enable blocking once it's ready.
+        loadTrackerBlockerEngine(
           window.webContents.session,
           config.cache,
           config.additionalBlockLists,
           config.disableDefaultLists,
-        );
+        ).catch((err: unknown) => {
+          console.error('Failed to load tracker blocker engine', err);
+        });
       }
     },
     stop({ window }) {
@@ -89,18 +93,22 @@ export default createPlugin({
         unloadTrackerBlockerEngine(window.webContents.session);
       }
     },
-    async onConfigChange(newConfig) {
+    onConfigChange(newConfig) {
       if (this.mainWindow) {
-        if (
-          newConfig.blocker === blockers.WithBlocklists &&
-          !isBlockerEnabled(this.mainWindow.webContents.session)
-        ) {
-          await loadTrackerBlockerEngine(
-            this.mainWindow.webContents.session,
-            newConfig.cache,
-            newConfig.additionalBlockLists,
-            newConfig.disableDefaultLists,
-          );
+        const session = this.mainWindow.webContents.session;
+        if (newConfig.blocker === blockers.WithBlocklists) {
+          if (!isBlockerEnabled(session)) {
+            loadTrackerBlockerEngine(
+              session,
+              newConfig.cache,
+              newConfig.additionalBlockLists,
+              newConfig.disableDefaultLists,
+            ).catch((err: unknown) => {
+              console.error('Failed to load tracker blocker engine', err);
+            });
+          }
+        } else if (isBlockerEnabled(session)) {
+          unloadTrackerBlockerEngine(session);
         }
       }
     },

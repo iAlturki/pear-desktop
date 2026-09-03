@@ -86,6 +86,12 @@ export const onRendererLoad = ({
   });
 };
 
+export const onRendererUnload = ({
+  ipc,
+}: RendererContext<DownloaderPluginConfig>) => {
+  ipc.removeAllListeners('downloader-feedback');
+};
+
 export const onPlayerApiReady = () => {
   setDownloadButtonText(t('plugins.downloader.templates.button'));
 

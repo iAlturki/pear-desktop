@@ -187,6 +187,9 @@ export default createPlugin<
       let transitionAudio: Howl; // Howler audio used to fade out the current music
       let firstVideo = true;
       let waitForTransition: Promise<unknown>;
+      let seekingListener: (() => void) | undefined;
+      let pauseListener: (() => void) | undefined;
+      let playListener: (() => void) | undefined;
 
       const getStreamURL = async (videoID: string): Promise<string> =>
         this.ipc?.invoke('audio-url', videoID) as Promise<string>;
@@ -237,6 +240,14 @@ export default createPlugin<
       const syncVideoWithTransitionAudio = () => {
         const video = document.querySelector('video')!;
 
+        // Runs once per track change - remove the previous track's
+        // listeners first, or they'd accumulate (and their VolumeFaders
+        // with them) for the rest of the session.
+        if (seekingListener)
+          video.removeEventListener('seeking', seekingListener);
+        if (pauseListener) video.removeEventListener('pause', pauseListener);
+        if (playListener) video.removeEventListener('play', playListener);
+
         const videoFader = new VolumeFader(video, {
           fadeScaling: this.config?.fadeScaling,
           fadeDuration: this.config?.fadeInDuration,
@@ -245,15 +256,17 @@ export default createPlugin<
         transitionAudio.play();
         transitionAudio.seek(video.currentTime);
 
-        video.addEventListener('seeking', () => {
+        seekingListener = () => {
           transitionAudio.seek(video.currentTime);
-        });
+        };
+        video.addEventListener('seeking', seekingListener);
 
-        video.addEventListener('pause', () => {
+        pauseListener = () => {
           transitionAudio.pause();
-        });
+        };
+        video.addEventListener('pause', pauseListener);
 
-        video.addEventListener('play', () => {
+        playListener = () => {
           transitionAudio.play();
           transitionAudio.seek(video.currentTime);
 
@@ -261,7 +274,8 @@ export default createPlugin<
           const videoVolume = video.volume;
           video.volume = 0;
           videoFader.fadeTo(videoVolume);
-        });
+        };
+        video.addEventListener('play', playListener);
 
         // Exit just before the end for the transition
         const transitionBeforeEnd = () => {

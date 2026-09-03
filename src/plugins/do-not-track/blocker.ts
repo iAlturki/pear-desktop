@@ -6,12 +6,15 @@ import { app, net } from 'electron';
 import * as z from 'zod';
 
 let blocker: ElectronBlocker | undefined;
+// Guards against overlapping loads (e.g. a config change firing while the
+// initial load is still in flight) building/enabling more than one engine.
+let inFlightLoad: Promise<void> | undefined;
 
 const TbSourcesSchema = z.object({
   tb: z.array(z.string()),
 });
 
-export const loadTrackerBlockerEngine = async (
+const doLoadTrackerBlockerEngine = async (
   session?: Electron.Session,
   cache: boolean = true,
   additionalBlockLists: string[] = [],
@@ -30,13 +33,17 @@ export const loadTrackerBlockerEngine = async (
           write: promises.writeFile,
         }
       : undefined;
-  const tbSources = TbSourcesSchema.safeParse(
-    await (
-      await net.fetch(
-        'https://raw.githubusercontent.com/organization/tb-list/refs/heads/main/tb.json',
-      )
-    ).json(),
-  );
+  let tbSourcesJson: unknown = undefined;
+  try {
+    const response = await net.fetch(
+      'https://raw.githubusercontent.com/organization/tb-list/refs/heads/main/tb.json',
+      { signal: AbortSignal.timeout(10_000) },
+    );
+    tbSourcesJson = await response.json();
+  } catch (error) {
+    console.error('Error fetching tracker blocker list index', error);
+  }
+  const tbSources = TbSourcesSchema.safeParse(tbSourcesJson);
   const lists = [
     ...((disableDefaultLists && !Array.isArray(disableDefaultLists)) ||
     (Array.isArray(disableDefaultLists) && disableDefaultLists.length > 0)
@@ -66,6 +73,25 @@ export const loadTrackerBlockerEngine = async (
   } catch (error) {
     console.error('Error loading blocker engine', error);
   }
+};
+
+export const loadTrackerBlockerEngine = (
+  session?: Electron.Session,
+  cache: boolean = true,
+  additionalBlockLists: string[] = [],
+  disableDefaultLists: boolean | unknown[] = false,
+): Promise<void> => {
+  if (inFlightLoad) return inFlightLoad;
+
+  inFlightLoad = doLoadTrackerBlockerEngine(
+    session,
+    cache,
+    additionalBlockLists,
+    disableDefaultLists,
+  ).finally(() => {
+    inFlightLoad = undefined;
+  });
+  return inFlightLoad;
 };
 
 export const unloadTrackerBlockerEngine = (session: Electron.Session) => {
