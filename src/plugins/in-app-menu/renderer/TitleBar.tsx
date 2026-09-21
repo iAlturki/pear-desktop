@@ -44,7 +44,7 @@ const titleStyle = cacheNoArgs(
 
     color: #f1f1f1;
     font-size: 12px;
-    padding: 4px 4px 4px var(--offset-left, 4px);
+    padding: 4px 145px 4px var(--offset-left, 4px);
     background-color: var(--titlebar-background-color, #030303);
     user-select: none;
 
@@ -54,7 +54,7 @@ const titleStyle = cacheNoArgs(
       background-color 300ms cubic-bezier(0.2, 0, 0.6, 1) 0s;
 
     &[data-macos='true'] {
-      padding: 4px 4px 4px 74px;
+      padding: 4px 12px 4px 74px;
     }
 
     ytmusic-app:has(ytmusic-player[player-ui-state='FULLSCREEN'])
@@ -76,11 +76,17 @@ const separatorStyle = cacheNoArgs(
 
 const badgeContainerStyle = cacheNoArgs(
   () => css`
-    flex: 1;
+    margin-left: auto;
     display: flex;
-    justify-content: center;
+    justify-content: flex-end;
     align-items: center;
     -webkit-app-region: no-drag;
+    padding-right: 8px;
+    white-space: nowrap;
+
+    @media (max-width: 860px) {
+      display: none;
+    }
   `,
 );
 

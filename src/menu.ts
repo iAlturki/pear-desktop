@@ -272,19 +272,6 @@ export const mainMenuTemplate = async (
 
   return [
     {
-      label: `⚡ ${t('plugins.performance-mode.name')}`,
-      type: 'checkbox',
-      checked: await config.plugins.isEnabled('performance-mode'),
-      click(item: MenuItem) {
-        if (item.checked) {
-          config.plugins.enable('performance-mode');
-        } else {
-          config.plugins.disable('performance-mode');
-        }
-        innerRefreshMenu();
-      },
-    },
-    {
       label: '🎵 Audio',
       submenu: audioPluginMenus,
     },
@@ -297,7 +284,7 @@ export const mainMenuTemplate = async (
       submenu: featurePluginMenus,
     },
     {
-      label: t('main.menu.options.label'),
+      label: '⚙️ Settings',
       submenu: [
         {
           label: t('main.menu.options.submenu.auto-update'),
@@ -747,56 +734,41 @@ export const mainMenuTemplate = async (
             },
           ],
         },
-      ],
-    },
-    {
-      label: t('main.menu.view.label'),
-      submenu: [
-        {
-          label: t('main.menu.view.submenu.reload'),
-          role: 'reload',
-        },
-        {
-          label: t('main.menu.view.submenu.force-reload'),
-          role: 'forceReload',
-        },
         { type: 'separator' },
         {
-          label: t('main.menu.view.submenu.zoom-in'),
-          role: 'zoomIn',
-          accelerator: 'CmdOrCtrl+=',
-          visible: false,
-        },
-        {
-          label: t('main.menu.view.submenu.zoom-in'),
-          role: 'zoomIn',
-          accelerator: 'CmdOrCtrl+Plus',
-        },
-        {
-          label: t('main.menu.view.submenu.zoom-out'),
-          role: 'zoomOut',
-          accelerator: 'CmdOrCtrl+-',
-        },
-        {
-          label: t('main.menu.view.submenu.zoom-out'),
-          role: 'zoomOut',
-          accelerator: 'CmdOrCtrl+Shift+-',
-          visible: false,
-        },
-        {
-          label: t('main.menu.view.submenu.reset-zoom'),
-          role: 'resetZoom',
+          label: 'Display & Zoom',
+          submenu: [
+            {
+              label: t('main.menu.view.submenu.reload'),
+              role: 'reload',
+            },
+            {
+              label: t('main.menu.view.submenu.force-reload'),
+              role: 'forceReload',
+            },
+            { type: 'separator' },
+            {
+              label: t('main.menu.view.submenu.zoom-in'),
+              role: 'zoomIn',
+              accelerator: 'CmdOrCtrl+Plus',
+            },
+            {
+              label: t('main.menu.view.submenu.zoom-out'),
+              role: 'zoomOut',
+              accelerator: 'CmdOrCtrl+-',
+            },
+            {
+              label: t('main.menu.view.submenu.reset-zoom'),
+              role: 'resetZoom',
+            },
+            { type: 'separator' },
+            {
+              label: t('main.menu.view.submenu.toggle-fullscreen'),
+              role: 'togglefullscreen',
+            },
+          ],
         },
         { type: 'separator' },
-        {
-          label: t('main.menu.view.submenu.toggle-fullscreen'),
-          role: 'togglefullscreen',
-        },
-      ],
-    },
-    {
-      label: t('main.menu.navigation.label'),
-      submenu: [
         {
           label: t('main.menu.navigation.submenu.go-back'),
           click() {
@@ -820,6 +792,7 @@ export const mainMenuTemplate = async (
             clipboard.writeText(currentURL);
           },
         },
+        { type: 'separator' },
         {
           label: t('main.menu.navigation.submenu.restart'),
           click: restart,
@@ -831,7 +804,7 @@ export const mainMenuTemplate = async (
       ],
     },
     {
-      label: 'iALTURKi Edition',
+      label: '👑 iALTURKi Edition',
       submenu: [
         {
           label: 'About ytr-music (iALTURKi Edition)',

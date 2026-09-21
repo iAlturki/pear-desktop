@@ -74,7 +74,10 @@ export const onPlayerApiReady = async (
     // doesn't overwrite it with a default (e.g. 100), unless an active fade is underway.
     const syncVolume = () => {
       const video = document.querySelector<HTMLVideoElement>('video');
-      if ((video as unknown as { __isFading?: boolean })?.__isFading) {
+      if (
+        (video as unknown as { __isFading?: boolean })?.__isFading ||
+        (window as unknown as { __isAudioFading?: boolean })?.__isAudioFading
+      ) {
         return;
       }
 

@@ -58,9 +58,13 @@ export default createPlugin<
     originalPlayVideo?: () => void;
     originalNextVideo?: () => void;
     originalPreviousVideo?: () => void;
+    originalVideoPause?: () => void;
+    originalVideoPlay?: () => Promise<void>;
     playListener?: () => void;
     seekingListener?: () => void;
     skipClickListener?: (event: MouseEvent) => void;
+    playPauseClickListener?: (event: MouseEvent) => void;
+    spaceKeyDownListener?: (event: KeyboardEvent) => void;
     timeUpdateListener?: () => void;
     videoDataChangeListener?: EventListener;
     startEndPoll: () => void;
@@ -189,8 +193,8 @@ export default createPlugin<
           return;
         }
 
-        const fadeOutSeconds =
-          Math.max(1, this.config.fadeOutDuration || 0) / 1000;
+        const fadeOutDuration = Math.max(500, this.config.fadeOutDuration || 800);
+        const fadeOutSeconds = fadeOutDuration / 1000;
         const remaining = this.video.duration - this.video.currentTime;
 
         if (remaining > 0 && remaining <= fadeOutSeconds) {
@@ -198,14 +202,15 @@ export default createPlugin<
           this.endFadeTriggered = true;
           this.isFading = true;
           (this.video as unknown as { __isFading?: boolean }).__isFading = true;
+          (window as unknown as { __isAudioFading?: boolean }).__isAudioFading = true;
           this.volumeBeforeFadeOut =
             this.video.volume > 0.01
               ? this.video.volume
               : (this.api?.getVolume() ?? 100) / 100;
 
           const actualDuration = Math.max(
-            Math.min(this.config.fadeOutDuration, remaining * 1000),
-            50,
+            Math.min(fadeOutDuration, remaining * 1000),
+            100,
           );
           this.fader!.setFadeDuration(actualDuration);
           this.fader!.fadeOut(() => {
@@ -213,12 +218,14 @@ export default createPlugin<
             if (this.video) {
               (this.video as unknown as { __isFading?: boolean }).__isFading =
                 false;
+              (window as unknown as { __isAudioFading?: boolean }).__isAudioFading =
+                false;
               this.video.volume = 0;
             }
             this.weTriggeredFadeOut = true;
           });
         }
-      }, 25);
+      }, 20);
     },
 
     stopEndPoll() {
@@ -255,33 +262,147 @@ export default createPlugin<
         return 1;
       };
 
-      // Handle track transition (both autoskip & manual track change)
+      // 1. Intercept video.pause for seamless fade out from any caller (Spacebar, UI, Media Keys)
+      const origVideoPause = video.pause.bind(video);
+      this.originalVideoPause = origVideoPause;
+      let isInternalPause = false;
+
+      video.pause = () => {
+        if (
+          isInternalPause ||
+          !this.config?.enabled ||
+          !this.config.fadeOnPause ||
+          video.paused ||
+          this.isFading
+        ) {
+          origVideoPause();
+          return;
+        }
+
+        this.isFading = true;
+        (video as unknown as { __isFading?: boolean }).__isFading = true;
+        (window as unknown as { __isAudioFading?: boolean }).__isAudioFading = true;
+        this.volumeBeforeFadeOut =
+          video.volume > 0.01
+            ? video.volume
+            : (this.api?.getVolume() ?? 100) / 100;
+
+        const duration = Math.max(400, this.config.fadeOutDuration || 800);
+        this.fader!.setFadeDuration(duration);
+        this.fader!.fadeOut(() => {
+          isInternalPause = true;
+          origVideoPause();
+          isInternalPause = false;
+          this.isFading = false;
+          (video as unknown as { __isFading?: boolean }).__isFading = false;
+          (window as unknown as { __isAudioFading?: boolean }).__isAudioFading =
+            false;
+          this.weTriggeredFadeOut = true;
+          video.volume = 0;
+        });
+      };
+
+      // 2. Intercept video.play so audio starts silent before the fade-in ramps up
+      const origVideoPlay = video.play.bind(video);
+      this.originalVideoPlay = origVideoPlay;
+      video.play = async () => {
+        if (this.config?.enabled) {
+          video.volume = 0;
+        }
+        return origVideoPlay();
+      };
+
+      // 3. Play event: Always smoothly fade in on playback start or resume
+      this.playListener = () => {
+        this.endFadeTriggered = false;
+        this.stopEndPoll();
+
+        if (!this.config?.enabled) {
+          return;
+        }
+
+        this.fader?.stop();
+        video.volume = 0;
+
+        const targetVolume = getTargetVolume();
+        const duration = Math.max(400, this.config.fadeInDuration || 800);
+
+        this.isFading = true;
+        (video as unknown as { __isFading?: boolean }).__isFading = true;
+        (window as unknown as { __isAudioFading?: boolean }).__isAudioFading = true;
+
+        this.fader!.setFadeDuration(duration);
+        this.fader!.fadeTo(targetVolume, () => {
+          this.isFading = false;
+          (video as unknown as { __isFading?: boolean }).__isFading = false;
+          (window as unknown as { __isAudioFading?: boolean }).__isAudioFading =
+            false;
+        });
+      };
+      video.addEventListener('play', this.playListener);
+
+      // 4. Capture click on play/pause button to trigger fade out before pausing
+      this.playPauseClickListener = (event: MouseEvent) => {
+        if (
+          !this.config?.enabled ||
+          !this.config.fadeOnPause ||
+          video.paused ||
+          this.isFading
+        ) {
+          return;
+        }
+        const path = event.composedPath();
+        const isPlayPause = path.some(
+          (el) =>
+            el instanceof HTMLElement &&
+            (el.id === 'play-pause-button' ||
+              el.matches?.(
+                '#play-pause-button, .play-pause-button, [aria-label*="Pause"]',
+              ) ||
+              Boolean(el.closest?.('#play-pause-button, .play-pause-button'))),
+        );
+        if (isPlayPause) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          video.pause();
+        }
+      };
+      document.addEventListener('click', this.playPauseClickListener, true);
+
+      // 5. Intercept spacebar to smoothly fade out when pausing
+      this.spaceKeyDownListener = (event: KeyboardEvent) => {
+        if (
+          !this.config?.enabled ||
+          !this.config.fadeOnPause ||
+          video.paused ||
+          this.isFading
+        ) {
+          return;
+        }
+        if (event.code === 'Space' || event.key === ' ' || event.key === 'k') {
+          const activeEl = document.activeElement;
+          const isInput =
+            activeEl instanceof HTMLInputElement ||
+            activeEl instanceof HTMLTextAreaElement ||
+            activeEl?.getAttribute('contenteditable') === 'true';
+          if (!isInput) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            video.pause();
+          }
+        }
+      };
+      window.addEventListener('keydown', this.spaceKeyDownListener, true);
+
+      // 6. Handle track transition (both autoskip & manual track change)
       this.videoDataChangeListener = ((e: CustomEvent<{ name?: string }>) => {
         const detail = e.detail;
         if (detail?.name === 'dataloaded') {
           this.stopEndPoll();
           this.endFadeTriggered = false;
 
-          if (
-            this.config?.enabled &&
-            this.config.fadeOnSkip &&
-            (this.weTriggeredFadeOut || this.isFading)
-          ) {
-            this.weTriggeredFadeOut = false;
-            this.fader?.stop();
+          if (this.config?.enabled && this.config.fadeOnSkip) {
             video.volume = 0;
-
-            const targetVolume = getTargetVolume();
-
-            this.isFading = true;
-            (video as unknown as { __isFading?: boolean }).__isFading = true;
-            this.fader!.setFadeDuration(
-              Math.max(1, this.config.fadeInDuration || 0),
-            );
-            this.fader!.fadeTo(targetVolume, () => {
-              this.isFading = false;
-              (video as unknown as { __isFading?: boolean }).__isFading = false;
-            });
           }
         }
       }) as EventListener;
@@ -296,84 +417,27 @@ export default createPlugin<
       };
       video.addEventListener('seeking', this.seekingListener);
 
-      // Fade in whenever playback (re)starts after a fade-out *we* caused
-      this.playListener = () => {
-        this.endFadeTriggered = false;
-        this.stopEndPoll();
-
-        if (!this.config?.enabled) {
-          return;
-        }
-
-        if (this.weTriggeredFadeOut || this.isFading) {
-          this.weTriggeredFadeOut = false;
-          this.fader?.stop();
-          video.volume = 0;
-
-          const targetVolume = getTargetVolume();
-
-          this.isFading = true;
-          (video as unknown as { __isFading?: boolean }).__isFading = true;
-          this.fader!.setFadeDuration(
-            Math.max(1, this.config.fadeInDuration || 0),
-          );
-          this.fader!.fadeTo(targetVolume, () => {
-            this.isFading = false;
-            (video as unknown as { __isFading?: boolean }).__isFading = false;
-          });
-        }
-      };
-      video.addEventListener('play', this.playListener);
-
-      // Zero volume before resuming so there is never an audible pop before the fade-in starts
+      // 7. API hooks for external callers
       this.originalPlayVideo = api.playVideo.bind(api);
       api.playVideo = () => {
-        if (this.config?.enabled && (this.weTriggeredFadeOut || this.isFading)) {
+        if (this.config?.enabled) {
           video.volume = 0;
         }
         this.originalPlayVideo!();
       };
 
-      // Fading out on pause
       this.originalPauseVideo = api.pauseVideo.bind(api);
       api.pauseVideo = () => {
-        if (
-          !this.config?.enabled ||
-          !this.config.fadeOnPause ||
-          video.paused ||
-          this.isFading
-        ) {
-          this.originalPauseVideo!();
-          return;
-        }
-
-        this.isFading = true;
-        (video as unknown as { __isFading?: boolean }).__isFading = true;
-        this.volumeBeforeFadeOut =
-          video.volume > 0.01
-            ? video.volume
-            : (api.getVolume() || 100) / 100;
-        this.fader!.setFadeDuration(
-          Math.max(1, this.config.fadeOutDuration || 0),
-        );
-        this.fader!.fadeOut(() => {
-          this.isFading = false;
-          (video as unknown as { __isFading?: boolean }).__isFading = false;
-          this.weTriggeredFadeOut = true;
-          video.volume = 0;
-          this.originalPauseVideo!();
-        });
+        video.pause();
       };
 
-      // Smooth next track transition
       this.originalNextVideo = api.nextVideo.bind(api);
       api.nextVideo = () => {
         if (
           !this.config?.enabled ||
           !this.config.fadeOnSkip ||
           video.paused ||
-          this.isFading ||
-          this.weTriggeredFadeOut
+          this.isFading
         ) {
           this.originalNextVideo!();
           return;
@@ -381,31 +445,34 @@ export default createPlugin<
 
         this.isFading = true;
         (video as unknown as { __isFading?: boolean }).__isFading = true;
+        (window as unknown as { __isAudioFading?: boolean }).__isAudioFading = true;
         this.volumeBeforeFadeOut =
           video.volume > 0.01
             ? video.volume
             : (api.getVolume() || 100) / 100;
-        this.fader!.setFadeDuration(
-          Math.max(1, this.config.fadeOutDuration || 0),
+        const duration = Math.max(
+          300,
+          Math.min(this.config.fadeOutDuration || 800, 600),
         );
+        this.fader!.setFadeDuration(duration);
         this.fader!.fadeOut(() => {
           this.isFading = false;
           (video as unknown as { __isFading?: boolean }).__isFading = false;
+          (window as unknown as { __isAudioFading?: boolean }).__isAudioFading =
+            false;
           this.weTriggeredFadeOut = true;
           video.volume = 0;
           this.originalNextVideo!();
         });
       };
 
-      // Smooth previous track transition
       this.originalPreviousVideo = api.previousVideo.bind(api);
       api.previousVideo = () => {
         if (
           !this.config?.enabled ||
           !this.config.fadeOnSkip ||
           video.paused ||
-          this.isFading ||
-          this.weTriggeredFadeOut
+          this.isFading
         ) {
           this.originalPreviousVideo!();
           return;
@@ -413,30 +480,42 @@ export default createPlugin<
 
         this.isFading = true;
         (video as unknown as { __isFading?: boolean }).__isFading = true;
+        (window as unknown as { __isAudioFading?: boolean }).__isAudioFading = true;
         this.volumeBeforeFadeOut =
           video.volume > 0.01
             ? video.volume
             : (api.getVolume() || 100) / 100;
-        this.fader!.setFadeDuration(
-          Math.max(1, this.config.fadeOutDuration || 0),
+        const duration = Math.max(
+          300,
+          Math.min(this.config.fadeOutDuration || 800, 600),
         );
+        this.fader!.setFadeDuration(duration);
         this.fader!.fadeOut(() => {
           this.isFading = false;
           (video as unknown as { __isFading?: boolean }).__isFading = false;
+          (window as unknown as { __isAudioFading?: boolean }).__isAudioFading =
+            false;
           this.weTriggeredFadeOut = true;
           video.volume = 0;
           this.originalPreviousVideo!();
         });
       };
 
-      // Skipping tracks via the player bar's next/previous buttons
+      // 8. Skipping tracks via player bar buttons
       this.skipClickListener = (event: MouseEvent) => {
         const button = event
           .composedPath()
           .find(
             (el): el is HTMLElement =>
               el instanceof HTMLElement &&
-              el.matches('.next-button, .previous-button'),
+              (el.matches?.(
+                '.next-button, .previous-button, #next-button, #previous-button, [aria-label*="Next"], [aria-label*="Previous"]',
+              ) ||
+                Boolean(
+                  el.closest?.(
+                    '.next-button, .previous-button, #next-button, #previous-button',
+                  ),
+                )),
           );
         if (!button || !this.config?.enabled || !this.config.fadeOnSkip) {
           return;
@@ -457,16 +536,21 @@ export default createPlugin<
 
         this.isFading = true;
         (video as unknown as { __isFading?: boolean }).__isFading = true;
+        (window as unknown as { __isAudioFading?: boolean }).__isAudioFading = true;
         this.volumeBeforeFadeOut =
           video.volume > 0.01
             ? video.volume
             : (api.getVolume() || 100) / 100;
-        this.fader!.setFadeDuration(
-          Math.max(1, this.config.fadeOutDuration || 0),
+        const duration = Math.max(
+          300,
+          Math.min(this.config.fadeOutDuration || 800, 600),
         );
+        this.fader!.setFadeDuration(duration);
         this.fader!.fadeOut(() => {
           this.isFading = false;
           (video as unknown as { __isFading?: boolean }).__isFading = false;
+          (window as unknown as { __isAudioFading?: boolean }).__isAudioFading =
+            false;
           this.weTriggeredFadeOut = true;
           video.volume = 0;
           document.removeEventListener('click', this.skipClickListener!, true);
@@ -476,7 +560,7 @@ export default createPlugin<
       };
       document.addEventListener('click', this.skipClickListener, true);
 
-      // Timeupdate monitor: kicks off high-resolution polling when nearing track end
+      // 9. Timeupdate monitor for smooth autoskip fading near track end
       this.timeUpdateListener = () => {
         if (
           !this.config?.enabled ||
@@ -489,10 +573,10 @@ export default createPlugin<
           return;
         }
 
-        const fadeOutSeconds =
-          Math.max(1, this.config.fadeOutDuration || 0) / 1000;
+        const fadeOutDuration = Math.max(500, this.config.fadeOutDuration || 800);
+        const fadeOutSeconds = fadeOutDuration / 1000;
         const remaining = video.duration - video.currentTime;
-        if (remaining > 0 && remaining <= Math.max(fadeOutSeconds * 3, 2.0)) {
+        if (remaining > 0 && remaining <= Math.max(fadeOutSeconds * 2.5, 2.5)) {
           this.startEndPoll();
         }
       };
@@ -502,6 +586,13 @@ export default createPlugin<
       this.stopEndPoll();
       if (this.video) {
         (this.video as unknown as { __isFading?: boolean }).__isFading = false;
+        (window as unknown as { __isAudioFading?: boolean }).__isAudioFading = false;
+        if (this.originalVideoPause) {
+          this.video.pause = this.originalVideoPause;
+        }
+        if (this.originalVideoPlay) {
+          this.video.play = this.originalVideoPlay;
+        }
         if (this.playListener) {
           this.video.removeEventListener('play', this.playListener);
         }
@@ -514,6 +605,12 @@ export default createPlugin<
         if (this.isFading) {
           this.video.volume = this.volumeBeforeFadeOut;
         }
+      }
+      if (this.playPauseClickListener) {
+        document.removeEventListener('click', this.playPauseClickListener, true);
+      }
+      if (this.spaceKeyDownListener) {
+        window.removeEventListener('keydown', this.spaceKeyDownListener, true);
       }
       if (this.videoDataChangeListener) {
         document.removeEventListener(
