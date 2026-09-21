@@ -137,6 +137,41 @@ export const getMiniplayerHTML = (): string => {
       paint-order: stroke fill;
     }
 
+    .idle-eq-bars {
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      gap: 2px;
+      height: 12px;
+      margin: -2px 0;
+    }
+
+    .idle-eq-bars .eq-bar {
+      width: 2.5px;
+      background: var(--accent-color);
+      border-radius: 1.5px;
+      height: 3px;
+      transition: height 0.2s ease, background 0.3s ease;
+      box-shadow: 0 0 6px var(--accent-glow);
+    }
+
+    .playing .idle-eq-bars .eq-bar-1 {
+      animation: eq-bounce 0.8s ease-in-out infinite alternate;
+    }
+
+    .playing .idle-eq-bars .eq-bar-2 {
+      animation: eq-bounce 0.6s ease-in-out 0.2s infinite alternate;
+    }
+
+    .playing .idle-eq-bars .eq-bar-3 {
+      animation: eq-bounce 0.9s ease-in-out 0.4s infinite alternate;
+    }
+
+    @keyframes eq-bounce {
+      0% { height: 3px; }
+      100% { height: 11px; }
+    }
+
     .vertical-progress-bar {
       position: absolute;
       left: 0;
@@ -469,6 +504,11 @@ export const getMiniplayerHTML = (): string => {
     <!-- Collapsed View: Vertical Top-to-Bottom Dock -->
     <div class="compact-view vertical-dock" id="compact-view">
       <img class="compact-art" id="compact-art" src="" alt="" style="display:none;" />
+      <div class="idle-eq-bars" id="idle-eq-bars">
+        <span class="eq-bar eq-bar-1"></span>
+        <span class="eq-bar eq-bar-2"></span>
+        <span class="eq-bar eq-bar-3"></span>
+      </div>
       <button class="idle-ctrl-btn idle-play-btn" id="compact-play-btn" title="Play/Pause">
         <svg viewBox="0 0 24 24" id="compact-play-icon"><path d="M8 5v14l11-7z"/></svg>
       </button>
@@ -590,6 +630,7 @@ export const getMiniplayerHTML = (): string => {
 
     function setPlayState(isPaused) {
       isPausedState = isPaused;
+      card.classList.toggle('playing', !isPaused);
       const icon = isPaused ? playSvg : pauseSvg;
       document.getElementById('compact-play-icon').innerHTML = icon;
       document.getElementById('main-play-icon').innerHTML = icon;
@@ -777,9 +818,9 @@ export const getMiniplayerHTML = (): string => {
       ipcRenderer.send('miniplayer:restore');
     });
 
-    const compactView = document.getElementById('compact-view');
-    compactView.addEventListener('dblclick', (e) => {
-      if (!e.target.closest('button')) {
+    // Double click to restore full window
+    card.addEventListener('dblclick', (e) => {
+      if (!e.target.closest('button') && !e.target.closest('input')) {
         ipcRenderer.send('miniplayer:restore');
       }
     });
@@ -787,6 +828,12 @@ export const getMiniplayerHTML = (): string => {
     closeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       ipcRenderer.send('miniplayer:close');
+    });
+
+    // Right click context menu
+    window.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      ipcRenderer.send('miniplayer:context-menu');
     });
 
     // Volume Slider & Mute
@@ -801,16 +848,93 @@ export const getMiniplayerHTML = (): string => {
       ipcRenderer.send('miniplayer:mute');
     });
 
-    // Seeking
-    seekTrack.addEventListener('click', (e) => {
-      e.stopPropagation();
+    // Mouse Wheel Volume Adjustment across entire miniplayer
+    window.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const step = e.deltaY < 0 ? 3 : -3;
+      const current = Number(volSlider.value);
+      const newVol = Math.max(0, Math.min(100, current + step));
+      volSlider.value = newVol;
+      volText.textContent = newVol + '%';
+      ipcRenderer.send('miniplayer:volume', newVol);
+    }, { passive: false });
+
+    // Interactive Drag / Scrub Seeking
+    let isSeeking = false;
+    const performSeek = (e) => {
       if (!currentDuration) return;
       const rect = seekTrack.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      const pct = Math.max(0, Math.min(1, clickX / rect.width));
+      const clickX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+      const pct = clickX / rect.width;
       const targetSeconds = pct * currentDuration;
-      ipcRenderer.send('miniplayer:seek', targetSeconds);
       updateProgress(targetSeconds, currentDuration);
+      return targetSeconds;
+    };
+
+    seekTrack.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
+      isSeeking = true;
+      const targetSeconds = performSeek(e);
+      if (typeof targetSeconds === 'number') {
+        ipcRenderer.send('miniplayer:seek', targetSeconds);
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isSeeking) {
+        performSeek(e);
+      }
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (isSeeking) {
+        isSeeking = false;
+        const targetSeconds = performSeek(e);
+        if (typeof targetSeconds === 'number') {
+          ipcRenderer.send('miniplayer:seek', targetSeconds);
+        }
+      }
+    });
+
+    // Global Widget Keyboard Shortcuts
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        togglePlay(e);
+      } else if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          nextTrack(e);
+        } else {
+          const target = Math.min(currentDuration, currentElapsed + 5);
+          ipcRenderer.send('miniplayer:seek', target);
+          updateProgress(target, currentDuration);
+        }
+      } else if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          prevTrack(e);
+        } else {
+          const target = Math.max(0, currentElapsed - 5);
+          ipcRenderer.send('miniplayer:seek', target);
+          updateProgress(target, currentDuration);
+        }
+      } else if (e.code === 'ArrowUp') {
+        e.preventDefault();
+        const newVol = Math.min(100, Number(volSlider.value) + 5);
+        volSlider.value = newVol;
+        volText.textContent = newVol + '%';
+        ipcRenderer.send('miniplayer:volume', newVol);
+      } else if (e.code === 'ArrowDown') {
+        e.preventDefault();
+        const newVol = Math.max(0, Number(volSlider.value) - 5);
+        volSlider.value = newVol;
+        volText.textContent = newVol + '%';
+        ipcRenderer.send('miniplayer:volume', newVol);
+      } else if (e.code === 'Escape') {
+        e.preventDefault();
+        ipcRenderer.send('miniplayer:restore');
+      }
     });
   </script>
 </body>

@@ -41,6 +41,7 @@ import {
 import { forceUnloadMenuPlugin } from '@/loader/menu';
 import { refreshMenu, setApplicationMenu } from '@/menu';
 import musicPlayerCss from '@/music-player.css?inline';
+import { toggleMiniplayer } from '@/plugins/miniplayer/main';
 import { fileExists, injectCSS, injectCSSAsFile } from '@/plugins/utils/main';
 import { restart, setupAppControls } from '@/providers/app-controls';
 import {
@@ -917,6 +918,14 @@ app.whenReady().then(async () => {
   await setApplicationMenu(mainWindow);
   await refreshMenu(mainWindow);
   setUpTray(app, mainWindow);
+
+  try {
+    globalShortcut.register('CommandOrControl+Alt+M', () => {
+      toggleMiniplayer();
+    });
+  } catch (err) {
+    console.warn(LoggerPrefix, 'Could not register global shortcut for miniplayer:', err);
+  }
 
   setupProtocolHandler(mainWindow);
 

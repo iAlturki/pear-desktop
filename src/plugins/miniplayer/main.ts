@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { app, BrowserWindow, ipcMain, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, screen } from 'electron';
 
 import { getSongControls } from '@/providers/song-controls';
 import { registerCallback, type SongInfo } from '@/providers/song-info';
@@ -214,6 +214,57 @@ export const onMainLoad = async ({
   ipcMain.on('miniplayer:close', () => {
     hideMiniplayer();
     ipcMain.emit('app:trim-memory');
+  });
+
+  // Handle right-click context menu
+  ipcMain.on('miniplayer:context-menu', () => {
+    if (!miniplayerWindow || miniplayerWindow.isDestroyed()) return;
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: 'Play / Pause',
+        click: () => controls.playPause(),
+      },
+      {
+        label: 'Next Track',
+        click: () => controls.next(),
+      },
+      {
+        label: 'Previous Track',
+        click: () => controls.previous(),
+      },
+      { type: 'separator' },
+      {
+        label: 'Like Song',
+        click: () => controls.like(),
+      },
+      {
+        label: 'Dislike Song',
+        click: () => controls.dislike(),
+      },
+      { type: 'separator' },
+      {
+        label: 'Restore YouTube Music',
+        click: () => {
+          hideMiniplayer();
+          if (!mainWindow.isDestroyed()) {
+            if (mainWindow.isMinimized()) {
+              mainWindow.restore();
+            }
+            mainWindow.show();
+            mainWindow.focus();
+          }
+          ipcMain.emit('app:trim-memory');
+        },
+      },
+      {
+        label: 'Close Miniplayer',
+        click: () => {
+          hideMiniplayer();
+          ipcMain.emit('app:trim-memory');
+        },
+      },
+    ]);
+    contextMenu.popup({ window: miniplayerWindow });
   });
 
   const getSafeSongInfo = (info: SongInfo) => ({

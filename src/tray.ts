@@ -9,6 +9,7 @@ import { APPLICATION_NAME, t } from '@/i18n';
 
 import * as config from './config';
 import { restart } from './providers/app-controls';
+import { toggleMiniplayer } from './plugins/miniplayer/main';
 import { getSongControls } from './providers/song-controls';
 import { registerCallback, SongInfoEvent } from './providers/song-info';
 
@@ -121,6 +122,12 @@ export const setUpTray = (app: Electron.App, win: Electron.BrowserWindow) => {
         win.show();
         win.focus();
         app.dock?.show();
+      },
+    },
+    {
+      label: 'Desktop Miniplayer (PiP)',
+      click() {
+        toggleMiniplayer();
       },
     },
     { type: 'separator' },
