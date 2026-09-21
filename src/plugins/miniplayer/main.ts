@@ -88,6 +88,7 @@ export const onMainLoad = async ({
       contextIsolation: false,
       sandbox: false,
       webSecurity: false,
+      backgroundThrottling: true,
     },
   });
 
@@ -193,6 +194,7 @@ export const onMainLoad = async ({
       mainWindow.hide();
     }
     showMiniplayer();
+    ipcMain.emit('app:trim-memory');
   });
 
   // Handle restore main window
@@ -205,11 +207,13 @@ export const onMainLoad = async ({
       mainWindow.show();
       mainWindow.focus();
     }
+    ipcMain.emit('app:trim-memory');
   });
 
   // Handle close miniplayer
   ipcMain.on('miniplayer:close', () => {
     hideMiniplayer();
+    ipcMain.emit('app:trim-memory');
   });
 
   const getSafeSongInfo = (info: SongInfo) => ({

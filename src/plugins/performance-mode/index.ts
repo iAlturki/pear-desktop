@@ -1,4 +1,5 @@
 import { t } from '@/i18n';
+import type { MusicPlayer } from '@/types/music-player';
 import { createPlugin } from '@/utils';
 
 import style from './style.css?inline';
@@ -35,6 +36,7 @@ export default createPlugin<
   unknown,
   {
     config?: PerformanceModePluginConfig;
+    playerApi?: MusicPlayer;
     videoDataChangeListener?: EventListener;
     playerObserver?: MutationObserver;
     applyVideoSuppression(hide: boolean): void;
@@ -75,6 +77,8 @@ export default createPlugin<
           player.setAttribute('playback-mode', 'OMV_PREFERRED');
         }
         try {
+          this.playerApi?.setPlaybackQualityRange?.('auto');
+          this.playerApi?.setPlaybackQuality?.('auto');
           const moviePlayer =
             document.querySelector<Element & { setPlaybackQualityRange?: (q: string) => void; setPlaybackQuality?: (q: string) => void }>('#movie_player');
           moviePlayer?.setPlaybackQualityRange?.('auto');
@@ -91,14 +95,24 @@ export default createPlugin<
       this.playerObserver?.disconnect();
       this.playerObserver = undefined;
 
-      // YouTube Music's own code resets playback-mode back to
-      // OMV_PREFERRED shortly after each track loads, so a one-time set
-      // only survives until the current track ends. A persistent observer
-      // re-asserts audio-only mode on every track instead, which is what
-      // actually stops the video stream from being fetched at all - not
-      // just hiding it once it's already downloading.
+      // Re-assert audio-only ATV mode
       player.setAttribute('playback-mode', 'ATV_PREFERRED');
+
+      // Click the official native song button on the AV toggle if available
+      const songBtn = document.querySelector<HTMLElement>(
+        'ytmusic-av-toggle tp-yt-paper-button.song-button',
+      );
+      if (
+        songBtn &&
+        !songBtn.hasAttribute('disabled') &&
+        !songBtn.classList.contains('iron-selected')
+      ) {
+        songBtn.click();
+      }
+
       try {
+        this.playerApi?.setPlaybackQualityRange?.('tiny');
+        this.playerApi?.setPlaybackQuality?.('tiny');
         const moviePlayer =
           document.querySelector<Element & { setPlaybackQualityRange?: (q: string) => void; setPlaybackQuality?: (q: string) => void }>('#movie_player');
         moviePlayer?.setPlaybackQualityRange?.('tiny');
@@ -106,6 +120,7 @@ export default createPlugin<
       } catch {
         // Ignore
       }
+
       const observer = new MutationObserver(() => {
         if (player.getAttribute('playback-mode') !== 'ATV_PREFERRED') {
           player.setAttribute('playback-mode', 'ATV_PREFERRED');
@@ -118,6 +133,8 @@ export default createPlugin<
         this.videoDataChangeListener = ((e: CustomEvent<{ name?: string }>) => {
           if (e.detail?.name === 'dataloaded') {
             try {
+              this.playerApi?.setPlaybackQualityRange?.('tiny');
+              this.playerApi?.setPlaybackQuality?.('tiny');
               const moviePlayer =
                 document.querySelector<Element & { setPlaybackQualityRange?: (q: string) => void; setPlaybackQuality?: (q: string) => void }>('#movie_player');
               moviePlayer?.setPlaybackQualityRange?.('tiny');
@@ -125,12 +142,31 @@ export default createPlugin<
             } catch {
               // Ignore
             }
+
+            const currentSongBtn = document.querySelector<HTMLElement>(
+              'ytmusic-av-toggle tp-yt-paper-button.song-button',
+            );
+            if (
+              currentSongBtn &&
+              !currentSongBtn.hasAttribute('disabled') &&
+              !currentSongBtn.classList.contains('iron-selected')
+            ) {
+              currentSongBtn.click();
+            }
+
+            if (typeof (window as unknown as { gc?: () => void }).gc === 'function') {
+              (window as unknown as { gc?: () => void }).gc?.();
+            }
           }
         }) as EventListener;
         document.addEventListener(
           'videodatachange',
           this.videoDataChangeListener,
         );
+      }
+
+      if (typeof (window as unknown as { gc?: () => void }).gc === 'function') {
+        (window as unknown as { gc?: () => void }).gc?.();
       }
     },
 
@@ -183,10 +219,8 @@ export default createPlugin<
         await this.suspendOtherPlugins();
       }
     },
-    onPlayerApiReady() {
-      // start() runs before the player element necessarily exists - once
-      // it does, re-assert suppression so the persistent observer above
-      // actually gets attached (a no-op if start() already managed to).
+    onPlayerApiReady(api: MusicPlayer) {
+      this.playerApi = api;
       if (this.config?.enabled) {
         this.applyVideoSuppression(true);
       }

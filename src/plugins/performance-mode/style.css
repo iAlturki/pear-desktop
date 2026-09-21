@@ -2,8 +2,15 @@
    video-toggle's own "audio-only" mode produces - kept as pure CSS (rather
    than direct inline-style writes) so it survives YouTube Music's own DOM
    churn on every track change without needing to re-apply it in JS. */
-body.performance-mode-active #song-video.ytmusic-player {
+body.performance-mode-active #song-video.ytmusic-player,
+body.performance-mode-active #song-video.ytmusic-player video,
+body.app-window-hidden #song-video.ytmusic-player,
+body.app-window-hidden #song-video.ytmusic-player video {
   display: none !important;
+  visibility: hidden !important;
+  content-visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 body.performance-mode-active #song-image {
@@ -12,7 +19,9 @@ body.performance-mode-active #song-image {
 
 /* Super Performance Mode: zero out expensive GPU compositing filters & blurs */
 body.performance-mode-active,
-body.performance-mode-active * {
+body.performance-mode-active *,
+body.app-window-hidden,
+body.app-window-hidden * {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   filter: none !important;
@@ -23,7 +32,8 @@ body.performance-mode-active * {
 }
 
 /* Hide any canvas rendering contexts (visualizers, wave animations) */
-body.performance-mode-active canvas {
+body.performance-mode-active canvas,
+body.app-window-hidden canvas {
   display: none !important;
 }
 
@@ -31,12 +41,17 @@ body.performance-mode-active canvas {
 body.performance-mode-active .ambient-background,
 body.performance-mode-active #background.ytmusic-player-page,
 body.performance-mode-active ytmusic-player-page::before,
-body.performance-mode-active ytmusic-player-page::after {
+body.performance-mode-active ytmusic-player-page::after,
+body.app-window-hidden .ambient-background,
+body.app-window-hidden #background.ytmusic-player-page,
+body.app-window-hidden ytmusic-player-page::before,
+body.app-window-hidden ytmusic-player-page::after {
   display: none !important;
   background: none !important;
 }
 
 /* Optimize player containment for faster layout passes */
-body.performance-mode-active #player-page {
+body.performance-mode-active #player-page,
+body.app-window-hidden #player-page {
   contain: content;
 }

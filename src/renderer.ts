@@ -497,6 +497,17 @@ const main = async () => {
     },
   );
 
+  window.ipcRenderer.on('app:suspend-rendering', () => {
+    document.body.classList.add('app-window-hidden');
+    if (typeof (window as unknown as { gc?: () => void }).gc === 'function') {
+      (window as unknown as { gc?: () => void }).gc?.();
+    }
+  });
+
+  window.ipcRenderer.on('app:resume-rendering', () => {
+    document.body.classList.remove('app-window-hidden');
+  });
+
   // Wait for complete load of the api
   await listenForApiLoad();
 

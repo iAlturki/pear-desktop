@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
@@ -97,6 +98,24 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'mailto', privileges: { standard: true } },
 ]);
 
+// Aggressive Memory & CPU Optimization Switches
+app.commandLine.appendSwitch(
+  'js-flags',
+  '--max-old-space-size=192 --optimize-for-size --expose-gc',
+);
+app.commandLine.appendSwitch('renderer-process-limit', '2');
+app.commandLine.appendSwitch('disk-cache-size', '33554432');
+app.commandLine.appendSwitch('media-cache-size', '33554432');
+app.commandLine.appendSwitch('disable-breakpad');
+app.commandLine.appendSwitch('disable-component-update');
+app.commandLine.appendSwitch('disable-domain-reliability');
+app.commandLine.appendSwitch('disable-sync');
+app.commandLine.appendSwitch('disable-speech-api');
+app.commandLine.appendSwitch('disable-print-preview');
+app.commandLine.appendSwitch('disable-background-networking');
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
+
 // Ozone platform hint: Required for Wayland support
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
 
@@ -109,8 +128,56 @@ app.commandLine.appendSwitch(
   'OverlayScrollbar,SharedArrayBuffer,UseOzonePlatform,WaylandWindowDecorations',
 );
 
-// Disable Fluent Scrollbar (for OverlayScrollbar)
-const disabledFeatures = ['FluentScrollbar'];
+// Disable Fluent Scrollbar (for OverlayScrollbar) and background bloat features
+const disabledFeatures = [
+  'FluentScrollbar',
+  'SpareRendererForSitePerProcess',
+  'CalculateNativeWinOcclusion',
+];
+
+const getMemTrimPath = () => {
+  const unpackedPath = path.join(
+    process.resourcesPath,
+    'app.asar.unpacked',
+    'assets',
+    'ytr-memtrim.exe',
+  );
+  if (fs.existsSync(unpackedPath)) return unpackedPath;
+
+  const localAssetsPath = path.join(app.getAppPath(), 'assets', 'ytr-memtrim.exe');
+  if (fs.existsSync(localAssetsPath)) return localAssetsPath;
+
+  const srcPath = path.join(__dirname, '..', '..', 'assets', 'ytr-memtrim.exe');
+  if (fs.existsSync(srcPath)) return srcPath;
+
+  return null;
+};
+
+export const trimAppMemory = (win?: BrowserWindow | null) => {
+  try {
+    if (typeof global.gc === 'function') {
+      global.gc();
+    }
+
+    if (win && !win.isDestroyed()) {
+      win.webContents
+        .executeJavaScript(
+          'if (typeof window.gc === "function") { window.gc(); }',
+        )
+        .catch(() => {});
+    }
+
+    if (process.platform === 'win32') {
+      const tool = getMemTrimPath();
+      if (tool) {
+        execFile(tool, [], { windowsHide: true }, () => {});
+      }
+    }
+  } catch {
+    // Ignore memory trim errors
+  }
+};
+
 let disableHardwareAcceleration = config.get(
   'options.disableHardwareAcceleration',
 );
@@ -567,6 +634,44 @@ async function createMainWindow() {
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
+  });
+
+  win.on('minimize', () => {
+    win.webContents.send('app:suspend-rendering');
+    trimAppMemory(win);
+  });
+
+  win.on('hide', () => {
+    win.webContents.send('app:suspend-rendering');
+    trimAppMemory(win);
+  });
+
+  win.on('restore', () => {
+    win.webContents.send('app:resume-rendering');
+  });
+
+  win.on('show', () => {
+    win.webContents.send('app:resume-rendering');
+  });
+
+  // Periodic active memory compaction every 60 seconds
+  setInterval(() => {
+    if (!win.isDestroyed()) {
+      trimAppMemory(win);
+    }
+  }, 60_000);
+
+  // Initial working-set flush after startup settles
+  setTimeout(() => {
+    if (!win.isDestroyed()) {
+      trimAppMemory(win);
+    }
+  }, 12_000);
+
+  ipcMain.on('app:trim-memory', () => {
+    if (!win.isDestroyed()) {
+      trimAppMemory(win);
+    }
   });
 
   win.webContents.loadURL(urlToLoad);

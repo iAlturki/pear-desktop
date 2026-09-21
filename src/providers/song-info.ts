@@ -236,6 +236,9 @@ const registerProvider = (win: BrowserWindow) => {
       for (const c of callbacks) {
         c(tempSongInfo, SongInfoEvent.VideoSrcChanged);
       }
+      setTimeout(() => {
+        ipcMain.emit('app:trim-memory');
+      }, 2000);
     }
   });
   ipcMain.on(
