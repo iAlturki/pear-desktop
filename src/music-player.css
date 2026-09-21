@@ -87,3 +87,17 @@ tp-yt-iron-dropdown,
 tp-yt-paper-dialog {
   app-region: no-drag;
 }
+
+/* Ad and promotional element suppression */
+ytmusic-mealbar-promo-renderer,
+ytmusic-upsell-dialog-renderer,
+tp-yt-paper-dialog:has(ytmusic-upsell-dialog-renderer),
+.ytp-ad-overlay-container,
+.ytp-ad-message-container,
+.ytp-ad-player-overlay,
+.ytp-ad-image-overlay,
+.ytp-ad-text-overlay,
+.video-ads,
+.ytmusic-popup-container:has(ytmusic-upsell-dialog-renderer) {
+  display: none !important;
+}

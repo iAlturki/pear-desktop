@@ -235,6 +235,18 @@ export default createPlugin({
             }px`;
           }
 
+          if (showVideo) {
+            try {
+              api?.setPlaybackQualityRange?.('auto');
+              api?.setPlaybackQuality?.('auto');
+            } catch {}
+          } else {
+            try {
+              api?.setPlaybackQualityRange?.('tiny');
+              api?.setPlaybackQuality?.('tiny');
+            } catch {}
+          }
+
           moveVolumeHud(showVideo);
         }
       };

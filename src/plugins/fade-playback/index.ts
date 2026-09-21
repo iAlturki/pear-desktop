@@ -53,10 +53,18 @@ export default createPlugin<
     isFading: boolean;
     weTriggeredFadeOut: boolean;
     endFadeTriggered: boolean;
+    endPollTimer?: ReturnType<typeof setInterval> | null;
     originalPauseVideo?: () => void;
+    originalPlayVideo?: () => void;
+    originalNextVideo?: () => void;
+    originalPreviousVideo?: () => void;
     playListener?: () => void;
+    seekingListener?: () => void;
     skipClickListener?: (event: MouseEvent) => void;
     timeUpdateListener?: () => void;
+    videoDataChangeListener?: EventListener;
+    startEndPoll: () => void;
+    stopEndPoll: () => void;
   },
   FadePlaybackPluginConfig
 >({
@@ -163,6 +171,63 @@ export default createPlugin<
     isFading: false,
     weTriggeredFadeOut: false,
     endFadeTriggered: false,
+    endPollTimer: null,
+
+    startEndPoll() {
+      if (this.endPollTimer) return;
+      this.endPollTimer = setInterval(() => {
+        if (
+          !this.config?.enabled ||
+          !this.config.fadeOnSkip ||
+          this.isFading ||
+          this.endFadeTriggered ||
+          !this.video ||
+          this.video.paused ||
+          this.video.seeking ||
+          !Number.isFinite(this.video.duration)
+        ) {
+          return;
+        }
+
+        const fadeOutSeconds =
+          Math.max(1, this.config.fadeOutDuration || 0) / 1000;
+        const remaining = this.video.duration - this.video.currentTime;
+
+        if (remaining > 0 && remaining <= fadeOutSeconds) {
+          this.stopEndPoll();
+          this.endFadeTriggered = true;
+          this.isFading = true;
+          (this.video as unknown as { __isFading?: boolean }).__isFading = true;
+          this.volumeBeforeFadeOut =
+            this.video.volume > 0.01
+              ? this.video.volume
+              : (this.api?.getVolume() ?? 100) / 100;
+
+          const actualDuration = Math.max(
+            Math.min(this.config.fadeOutDuration, remaining * 1000),
+            50,
+          );
+          this.fader!.setFadeDuration(actualDuration);
+          this.fader!.fadeOut(() => {
+            this.isFading = false;
+            if (this.video) {
+              (this.video as unknown as { __isFading?: boolean }).__isFading =
+                false;
+              this.video.volume = 0;
+            }
+            this.weTriggeredFadeOut = true;
+          });
+        }
+      }, 25);
+    },
+
+    stopEndPoll() {
+      if (this.endPollTimer) {
+        clearInterval(this.endPollTimer);
+        this.endPollTimer = null;
+      }
+    },
+
     async start({ getConfig }) {
       this.config = await getConfig();
     },
@@ -177,57 +242,99 @@ export default createPlugin<
         return;
       }
       this.video = video;
-      this.fader = new VolumeFader(video, { fadeScaling: 'linear' });
+      this.fader = new VolumeFader(video, { fadeScaling: 'equal-power' });
+
+      const getTargetVolume = () => {
+        if (this.volumeBeforeFadeOut > 0.01) {
+          return this.volumeBeforeFadeOut;
+        }
+        const current = this.api?.getVolume();
+        if (typeof current === 'number' && current > 0) {
+          return current / 100;
+        }
+        return 1;
+      };
+
+      // Handle track transition (both autoskip & manual track change)
+      this.videoDataChangeListener = ((e: CustomEvent<{ name?: string }>) => {
+        const detail = e.detail;
+        if (detail?.name === 'dataloaded') {
+          this.stopEndPoll();
+          this.endFadeTriggered = false;
+
+          if (
+            this.config?.enabled &&
+            this.config.fadeOnSkip &&
+            (this.weTriggeredFadeOut || this.isFading)
+          ) {
+            this.weTriggeredFadeOut = false;
+            this.fader?.stop();
+            video.volume = 0;
+
+            const targetVolume = getTargetVolume();
+
+            this.isFading = true;
+            (video as unknown as { __isFading?: boolean }).__isFading = true;
+            this.fader!.setFadeDuration(
+              Math.max(1, this.config.fadeInDuration || 0),
+            );
+            this.fader!.fadeTo(targetVolume, () => {
+              this.isFading = false;
+              (video as unknown as { __isFading?: boolean }).__isFading = false;
+            });
+          }
+        }
+      }) as EventListener;
+      document.addEventListener(
+        'videodatachange',
+        this.videoDataChangeListener,
+      );
+
+      this.seekingListener = () => {
+        this.stopEndPoll();
+        this.endFadeTriggered = false;
+      };
+      video.addEventListener('seeking', this.seekingListener);
 
       // Fade in whenever playback (re)starts after a fade-out *we* caused
-      // (pause, skip, or the track naturally ending) - never on a 'play'
-      // we didn't precede, e.g. the very first playback after app launch.
-      // Untouched otherwise, so it can never race ahead of the app
-      // restoring the user's actual saved volume.
       this.playListener = () => {
         this.endFadeTriggered = false;
+        this.stopEndPoll();
 
-        if (!this.config?.enabled || !this.weTriggeredFadeOut) {
-          return;
-        }
-        this.weTriggeredFadeOut = false;
-
-        const targetVolume = this.volumeBeforeFadeOut;
-
-        // A hidden window gets no ramp at all. requestAnimationFrame - which
-        // drives the fade - does not fire while the window is minimised or
-        // occluded, so the `volume = 0` below would be the LAST volume ever
-        // assigned: the track plays on in silence until something happens to
-        // wake the renderer. Restoring directly is both correct and invisible,
-        // because there is nobody watching a hidden window to see a fade.
-        // (VolumeFader now also guards this itself; this keeps the dangerous
-        // assignment from ever being reached in the first place.)
-        if (typeof document !== 'undefined' && document.hidden) {
-          this.isFading = false;
-          video.volume = targetVolume;
+        if (!this.config?.enabled) {
           return;
         }
 
-        this.isFading = true;
-        video.volume = 0;
-        this.fader!.setFadeDuration(
-          Math.max(1, this.config.fadeInDuration || 0),
-        );
-        this.fader!.fadeTo(targetVolume, () => {
-          this.isFading = false;
-        });
+        if (this.weTriggeredFadeOut || this.isFading) {
+          this.weTriggeredFadeOut = false;
+          this.fader?.stop();
+          video.volume = 0;
+
+          const targetVolume = getTargetVolume();
+
+          this.isFading = true;
+          (video as unknown as { __isFading?: boolean }).__isFading = true;
+          this.fader!.setFadeDuration(
+            Math.max(1, this.config.fadeInDuration || 0),
+          );
+          this.fader!.fadeTo(targetVolume, () => {
+            this.isFading = false;
+            (video as unknown as { __isFading?: boolean }).__isFading = false;
+          });
+        }
       };
       video.addEventListener('play', this.playListener);
 
-      // Fading out on pause requires delaying the actual pause until the
-      // fade completes, since a paused element no longer produces audio.
-      // Intercept api.pauseVideo() - the same entry point this app's own
-      // IPC/media-key/shortcut paths use (see renderer.ts) - rather than
-      // the <video> element's own pause() method. video.pause() is also
-      // called internally by the player for reasons that have nothing to
-      // do with the user pausing (seeking, buffering, track transitions),
-      // and delaying those breaks its own state machine - it was causing
-      // glitchy seeks and tracks starting stuck in a paused state.
+      // Zero volume before resuming so there is never an audible pop before the fade-in starts
+      this.originalPlayVideo = api.playVideo.bind(api);
+      api.playVideo = () => {
+        if (this.config?.enabled && (this.weTriggeredFadeOut || this.isFading)) {
+          video.volume = 0;
+        }
+        this.originalPlayVideo!();
+      };
+
+      // Fading out on pause
       this.originalPauseVideo = api.pauseVideo.bind(api);
       api.pauseVideo = () => {
         if (
@@ -236,29 +343,93 @@ export default createPlugin<
           video.paused ||
           this.isFading
         ) {
-          // If a fade (e.g. a pending skip) is already in flight, don't
-          // stomp on it and lose its callback - just pause immediately.
           this.originalPauseVideo!();
           return;
         }
 
         this.isFading = true;
-        this.volumeBeforeFadeOut = video.volume;
+        (video as unknown as { __isFading?: boolean }).__isFading = true;
+        this.volumeBeforeFadeOut =
+          video.volume > 0.01
+            ? video.volume
+            : (api.getVolume() || 100) / 100;
         this.fader!.setFadeDuration(
           Math.max(1, this.config.fadeOutDuration || 0),
         );
         this.fader!.fadeOut(() => {
           this.isFading = false;
+          (video as unknown as { __isFading?: boolean }).__isFading = false;
           this.weTriggeredFadeOut = true;
+          video.volume = 0;
           this.originalPauseVideo!();
         });
       };
 
-      // Same idea for skipping tracks via the player bar's next/previous
-      // buttons (also used by the media keys / global shortcuts / other
-      // plugins). These buttons live inside a web component's shadow DOM,
-      // so a document-level listener sees event.target retargeted to the
-      // shadow host - composedPath() is needed to find the real target.
+      // Smooth next track transition
+      this.originalNextVideo = api.nextVideo.bind(api);
+      api.nextVideo = () => {
+        if (
+          !this.config?.enabled ||
+          !this.config.fadeOnSkip ||
+          video.paused ||
+          this.isFading ||
+          this.weTriggeredFadeOut
+        ) {
+          this.originalNextVideo!();
+          return;
+        }
+
+        this.isFading = true;
+        (video as unknown as { __isFading?: boolean }).__isFading = true;
+        this.volumeBeforeFadeOut =
+          video.volume > 0.01
+            ? video.volume
+            : (api.getVolume() || 100) / 100;
+        this.fader!.setFadeDuration(
+          Math.max(1, this.config.fadeOutDuration || 0),
+        );
+        this.fader!.fadeOut(() => {
+          this.isFading = false;
+          (video as unknown as { __isFading?: boolean }).__isFading = false;
+          this.weTriggeredFadeOut = true;
+          video.volume = 0;
+          this.originalNextVideo!();
+        });
+      };
+
+      // Smooth previous track transition
+      this.originalPreviousVideo = api.previousVideo.bind(api);
+      api.previousVideo = () => {
+        if (
+          !this.config?.enabled ||
+          !this.config.fadeOnSkip ||
+          video.paused ||
+          this.isFading ||
+          this.weTriggeredFadeOut
+        ) {
+          this.originalPreviousVideo!();
+          return;
+        }
+
+        this.isFading = true;
+        (video as unknown as { __isFading?: boolean }).__isFading = true;
+        this.volumeBeforeFadeOut =
+          video.volume > 0.01
+            ? video.volume
+            : (api.getVolume() || 100) / 100;
+        this.fader!.setFadeDuration(
+          Math.max(1, this.config.fadeOutDuration || 0),
+        );
+        this.fader!.fadeOut(() => {
+          this.isFading = false;
+          (video as unknown as { __isFading?: boolean }).__isFading = false;
+          this.weTriggeredFadeOut = true;
+          video.volume = 0;
+          this.originalPreviousVideo!();
+        });
+      };
+
+      // Skipping tracks via the player bar's next/previous buttons
       this.skipClickListener = (event: MouseEvent) => {
         const button = event
           .composedPath()
@@ -271,8 +442,7 @@ export default createPlugin<
           return;
         }
 
-        if (this.isFading) {
-          // Ignore extra clicks while a fade is already in flight.
+        if (this.isFading || this.weTriggeredFadeOut) {
           event.preventDefault();
           event.stopImmediatePropagation();
           return;
@@ -286,13 +456,19 @@ export default createPlugin<
         event.stopImmediatePropagation();
 
         this.isFading = true;
-        this.volumeBeforeFadeOut = video.volume;
+        (video as unknown as { __isFading?: boolean }).__isFading = true;
+        this.volumeBeforeFadeOut =
+          video.volume > 0.01
+            ? video.volume
+            : (api.getVolume() || 100) / 100;
         this.fader!.setFadeDuration(
           Math.max(1, this.config.fadeOutDuration || 0),
         );
         this.fader!.fadeOut(() => {
           this.isFading = false;
+          (video as unknown as { __isFading?: boolean }).__isFading = false;
           this.weTriggeredFadeOut = true;
+          video.volume = 0;
           document.removeEventListener('click', this.skipClickListener!, true);
           button.click();
           document.addEventListener('click', this.skipClickListener!, true);
@@ -300,9 +476,7 @@ export default createPlugin<
       };
       document.addEventListener('click', this.skipClickListener, true);
 
-      // Fade out proactively as the track nears its natural end too, so an
-      // automatic advance to the next track (no button click involved)
-      // fades instead of cutting off abruptly.
+      // Timeupdate monitor: kicks off high-resolution polling when nearing track end
       this.timeUpdateListener = () => {
         if (
           !this.config?.enabled ||
@@ -318,44 +492,53 @@ export default createPlugin<
         const fadeOutSeconds =
           Math.max(1, this.config.fadeOutDuration || 0) / 1000;
         const remaining = video.duration - video.currentTime;
-        if (remaining > 0 && remaining <= fadeOutSeconds) {
-          this.endFadeTriggered = true;
-          this.isFading = true;
-          this.volumeBeforeFadeOut = video.volume;
-          this.fader!.setFadeDuration(
-            Math.max(1, this.config.fadeOutDuration || 0),
-          );
-          this.fader!.fadeOut(() => {
-            this.isFading = false;
-            this.weTriggeredFadeOut = true;
-          });
+        if (remaining > 0 && remaining <= Math.max(fadeOutSeconds * 3, 2.0)) {
+          this.startEndPoll();
         }
       };
       video.addEventListener('timeupdate', this.timeUpdateListener);
     },
     stop() {
+      this.stopEndPoll();
       if (this.video) {
+        (this.video as unknown as { __isFading?: boolean }).__isFading = false;
         if (this.playListener) {
           this.video.removeEventListener('play', this.playListener);
+        }
+        if (this.seekingListener) {
+          this.video.removeEventListener('seeking', this.seekingListener);
         }
         if (this.timeUpdateListener) {
           this.video.removeEventListener('timeupdate', this.timeUpdateListener);
         }
-        // If a fade was cut off mid-flight, jump back to the volume it
-        // started from instead of leaving it stuck at a partial level.
         if (this.isFading) {
           this.video.volume = this.volumeBeforeFadeOut;
         }
       }
-      if (this.api && this.originalPauseVideo) {
-        this.api.pauseVideo = this.originalPauseVideo;
+      if (this.videoDataChangeListener) {
+        document.removeEventListener(
+          'videodatachange',
+          this.videoDataChangeListener,
+        );
+      }
+      if (this.api) {
+        if (this.originalPauseVideo) {
+          this.api.pauseVideo = this.originalPauseVideo;
+        }
+        if (this.originalPlayVideo) {
+          this.api.playVideo = this.originalPlayVideo;
+        }
+        if (this.originalNextVideo) {
+          this.api.nextVideo = this.originalNextVideo;
+        }
+        if (this.originalPreviousVideo) {
+          this.api.previousVideo = this.originalPreviousVideo;
+        }
       }
       if (this.skipClickListener) {
         document.removeEventListener('click', this.skipClickListener, true);
       }
       this.fader?.stop();
-      // fader.stop() abandons any in-flight fade without invoking its
-      // callback, so this flag must be reset here or it can get stuck.
       this.isFading = false;
     },
   },

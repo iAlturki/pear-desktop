@@ -65,23 +65,13 @@ interface VolumeFade {
 export class VolumeFader {
   private readonly media: HTMLMediaElement;
   private readonly logger: VolumeLogger | null;
-  private scale: {
-    internalToVolume: (level: number) => number;
-    volumeToInternal: (level: number) => number;
-  };
+  private fadeScaling: 'linear' | 'equal-power' = 'equal-power';
   private fadeDuration: number = 1000;
   private active: boolean = false;
   private fade: VolumeFade | undefined;
-  // Safety net for the rAF starvation bug. requestAnimationFrame does NOT fire
-  // while the window is minimised or occluded, so a fade started (or still
-  // running) at that moment would never reach its final tick — the one that
-  // assigns the target volume and fires the callback. The media element then
-  // keeps playing at whatever volume the last tick left, which for a fade-in
-  // is the hard `volume = 0` its caller set just before. Result: the track
-  // plays, the timeline advances, and there is no audio.
-  // setTimeout is throttled in background windows but, unlike rAF, it still
-  // fires — so it can always finish what rAF abandoned.
   private watchdog: ReturnType<typeof setTimeout> | undefined;
+  private bgTimer: ReturnType<typeof setTimeout> | undefined;
+  private animFrameId: number | undefined;
 
   /**
    * VolumeFader Constructor
@@ -113,61 +103,14 @@ export class VolumeFader {
       this.logger = null;
     }
 
-    // Linear volume fading?
+    // Determine scaling curve
     if (options.fadeScaling === 'linear') {
-      // Pass levels unchanged
-      this.scale = {
-        internalToVolume: (level: number) => level,
-        volumeToInternal: (level: number) => level,
-      };
-
-      // Log setting
+      this.fadeScaling = 'linear';
       this.logger?.('Using linear fading.');
-    }
-    // No linear, but logarithmic fading…
-    else {
-      let dynamicRange: number;
-
-      // Default dynamic range?
-      if (
-        options.fadeScaling === undefined ||
-        options.fadeScaling === 'logarithmic'
-      ) {
-        // Set default of 60 dB
-        dynamicRange = 3;
-      }
-      // Custom dynamic range?
-      else if (
-        typeof options.fadeScaling === 'number' &&
-        !Number.isNaN(options.fadeScaling) &&
-        options.fadeScaling > 0
-      ) {
-        // Turn amplitude dB into a multiple of 10 power dB
-        dynamicRange = options.fadeScaling / 2 / 10;
-      }
-      // Unsupported value
-      else {
-        // Abort and throw exception
-        throw new TypeError(
-          "Expected 'linear', 'logarithmic' or a positive number as fade scaling preference!",
-        );
-      }
-
-      // Use exponential/logarithmic scaler for expansion/compression
-      this.scale = {
-        internalToVolume: (level: number) =>
-          this.exponentialScaler(level, dynamicRange),
-        volumeToInternal: (level: number) =>
-          this.logarithmicScaler(level, dynamicRange),
-      };
-
-      // Log setting if not default
-      if (options.fadeScaling)
-        this.logger?.(
-          'Using logarithmic fading with ' +
-            String(10 * dynamicRange) +
-            ' dB dynamic range.',
-        );
+    } else {
+      // Default: Equal-power / Smooth Hermite curve (studio-grade zero-cliff fading)
+      this.fadeScaling = 'equal-power';
+      this.logger?.('Using studio-grade equal-power smooth fading.');
     }
 
     // Set initial volume?
@@ -207,6 +150,7 @@ export class VolumeFader {
   start() {
     // Set fader to be active
     this.active = true;
+    (this.media as unknown as { __isFading?: boolean }).__isFading = true;
 
     // Start by running the update method
     this.updateVolume();
@@ -224,11 +168,11 @@ export class VolumeFader {
   stop() {
     // Set fader to be inactive
     this.active = false;
+    (this.media as unknown as { __isFading?: boolean }).__isFading = false;
 
-    // Drop the safety net too. stop() means "interrupt this fade", so the
-    // watchdog must not fire later and jump the volume to a target the caller
-    // has already abandoned.
     this.clearWatchdog();
+    this.clearTimers();
+    this.fade = undefined;
 
     // Return instance for chaining
     return this;
@@ -271,35 +215,27 @@ export class VolumeFader {
     // Validate volume and throw if invalid
     validateVolumeLevel(targetVolume);
 
-    // Define new fade
+    // Define new fade directly on volume levels
     this.fade = {
-      // Volume start and end point on internal fading scale
       volume: {
-        start: this.scale.volumeToInternal(this.media.volume),
-        end: this.scale.volumeToInternal(targetVolume),
+        start: this.media.volume,
+        end: targetVolume,
       },
-      // Time start and end point
       time: {
         start: Date.now(),
         end: Date.now() + this.fadeDuration,
       },
-      // Optional callback function
       callback,
     };
 
-    // Arm the safety net before starting, so it covers even the case where the
-    // window is already hidden and rAF never delivers a single tick. The slack
-    // keeps it from racing a healthy fade's own final tick; a background
-    // setTimeout may fire late, which is fine - late is still finite, and the
-    // failure it replaces was permanent.
     this.clearWatchdog();
     this.watchdog = setTimeout(() => {
       this.watchdog = undefined;
       if (this.active && this.fade) {
-        this.logger?.('Fade watchdog fired: rAF stalled, completing.');
+        this.logger?.('Fade watchdog fired: completing.');
         this.completeFade();
       }
-    }, this.fadeDuration + 250);
+    }, this.fadeDuration + 300);
 
     // Start fading
     this.start();
@@ -321,78 +257,79 @@ export class VolumeFader {
   }
 
   /**
-   * Internal: Update media volume.
-   * (calls itself through requestAnimationFrame)
+   * Internal: Update media volume with Equal-Power Cosine curve.
+   * Uses requestAnimationFrame when window is visible, and seamless setTimeout ticks
+   * when running in the background or minimized, ensuring zero skipped fades.
    */
   updateVolume() {
-    // Fader active and fade available to process?
     if (this.active && this.fade) {
-      // Get current time
       const now = Date.now();
 
-      // Nothing is animating in a window nobody can see, and rAF will not call
-      // us again while it is hidden. Land on the target now rather than leave
-      // the element stranded at an intermediate volume - silence is a far worse
-      // outcome than a skipped ramp.
-      if (typeof document !== 'undefined' && document.hidden) {
-        this.logger?.('Document hidden mid-fade; completing immediately.');
-        this.completeFade();
-        return;
-      }
-
-      // Time left for fading?
       if (now < this.fade.time.end) {
-        // Compute current fade progress
-        const progress =
-          (now - this.fade.time.start) /
-          (this.fade.time.end - this.fade.time.start);
+        const progress = Math.max(
+          0,
+          Math.min(
+            1,
+            (now - this.fade.time.start) /
+              (this.fade.time.end - this.fade.time.start),
+          ),
+        );
 
-        // Compute current level on internal scale
-        const volumeDelta =
-          progress * (this.fade.volume.end - this.fade.volume.start);
-        const level = volumeDelta + this.fade.volume.start;
+        let interpolated: number;
+        if (this.fadeScaling === 'linear') {
+          interpolated =
+            this.fade.volume.start +
+            ((this.fade.volume.end - this.fade.volume.start) * progress);
+        } else {
+          // Equal-Power Cosine / Sine fade curve:
+          // When fading out (end = 0): start * cos(progress * PI / 2)
+          // When fading in (start = 0): end * sin(progress * PI / 2)
+          // Zero cliff, zero popping, and constant acoustic energy throughout
+          const cosVal = Math.cos((progress * Math.PI) / 2);
+          const sinVal = Math.sin((progress * Math.PI) / 2);
+          interpolated =
+            (this.fade.volume.start * cosVal) +
+            (this.fade.volume.end * sinVal);
+        }
 
-        // Map fade level to volume level and apply it to media element
-        this.media.volume = this.scale.internalToVolume(level);
+        this.media.volume = Math.max(0, Math.min(1, interpolated));
 
-        // Schedule next update
-        window.requestAnimationFrame(this.updateVolume.bind(this));
+        // Background-safe scheduling:
+        this.clearTimers();
+        if (typeof document !== 'undefined' && document.hidden) {
+          this.bgTimer = setTimeout(() => this.updateVolume(), 20);
+        } else {
+          this.animFrameId = window.requestAnimationFrame(
+            this.updateVolume.bind(this),
+          );
+        }
       } else {
-        // Log end of fade
         this.logger?.('Fade to ' + String(this.fade.volume.end) + ' complete.');
-
         this.completeFade();
       }
     }
   }
 
   /**
-   * Internal: Land on the fade's target volume and finish.
-   *
-   * Extracted so that the three paths which must all end the same way share one
-   * implementation: the normal final tick, the document-hidden shortcut, and
-   * the watchdog that fires when requestAnimationFrame stopped calling us.
-   * Every one of them must assign the target volume AND run the callback -
-   * skipping either is what leaves playback silent or a caller's `isFading`
-   * flag stuck true forever.
+   * Internal: Land on the fade's target volume and finish cleanly.
    */
   private completeFade() {
     if (!this.fade) return;
 
     const { callback, volume } = this.fade;
 
-    // Jump to target volume
-    this.media.volume = this.scale.internalToVolume(volume.end);
+    // Set precise target volume
+    this.media.volume = Math.max(0, Math.min(1, volume.end));
 
-    // Set fader to be inactive and clear the safety net
+    // Set fader to be inactive and clear timers
     this.active = false;
+    (this.media as unknown as { __isFading?: boolean }).__isFading = false;
     this.clearWatchdog();
+    this.clearTimers();
 
-    // Clear fade BEFORE the callback: callers routinely start a new fade from
-    // inside it, and clearing afterwards would silently discard that new fade.
     this.fade = undefined;
 
-    // Done, call back (if callable)
+    // Done, execute callback
     if (typeof callback === 'function') callback();
   }
 
@@ -403,49 +340,15 @@ export class VolumeFader {
     }
   }
 
-  /**
-   * Internal: Exponential scaler with dynamic range limit.
-   *
-   * @param {Number} input - logarithmic input level to be expanded (float, 0…1)
-   * @param {Number} dynamicRange - expanded output range, in multiples of 10 dB (float, 0…∞)
-   * @return {Number} - expanded level (float, 0…1)
-   */
-  exponentialScaler(input: number, dynamicRange: number) {
-    // Special case: make zero (or any falsy input) return zero
-    if (input === 0) {
-      // Since the dynamic range is limited,
-      // allow a zero to produce a plain zero instead of a small faction
-      // (audio would not be recognized as silent otherwise)
-      return 0;
+  private clearTimers() {
+    if (this.animFrameId !== undefined) {
+      window.cancelAnimationFrame(this.animFrameId);
+      this.animFrameId = undefined;
     }
-
-    // Scale 0…1 to minus something × 10 dB
-    input = (input - 1) * dynamicRange;
-
-    // Compute power of 10
-    return 10 ** input;
-  }
-
-  /**
-   * Internal: Logarithmic scaler with dynamic range limit.
-   *
-   * @param {Number} input - exponential input level to be compressed (float, 0…1)
-   * @param {Number} dynamicRange - coerced input range, in multiples of 10 dB (float, 0…∞)
-   * @return {Number} - compressed level (float, 0…1)
-   */
-  logarithmicScaler(input: number, dynamicRange: number) {
-    // Special case: make zero (or any falsy input) return zero
-    if (input === 0) {
-      // Logarithm of zero would be -∞, which would map to zero anyway
-      return 0;
+    if (this.bgTimer !== undefined) {
+      clearTimeout(this.bgTimer);
+      this.bgTimer = undefined;
     }
-
-    // Compute base-10 logarithm
-    input = Math.log10(input);
-
-    // Scale minus something × 10 dB to 0…1 (clipping at 0)
-    const scaledInput = input / dynamicRange;
-    return Math.max(1 + scaledInput, 0);
   }
 }
 

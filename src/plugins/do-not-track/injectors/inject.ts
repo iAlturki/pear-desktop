@@ -33,19 +33,26 @@ export const isInjected = (): boolean => injected;
 export const inject = (contextBridge: ContextBridge): void => {
   injected = true;
   {
+    const pruneObj = (obj: PrunableResponse) => {
+      delete obj.playerAds;
+      delete obj.adPlacements;
+      delete obj.adSlots;
+      delete obj.adBreakHeartbeatParams;
+      delete obj.adBreakHeartbeatRenderer;
+      delete obj.adThrottled;
+    };
+
     const pruner = (o: PrunableResponse): PrunableResponse => {
-      delete o.playerAds;
-      delete o.adPlacements;
-      delete o.adSlots;
-      if (o.playerResponse) {
-        delete o.playerResponse.playerAds;
-        delete o.playerResponse.adPlacements;
-        delete o.playerResponse.adSlots;
+      if (typeof o !== 'object' || o === null) return o;
+      pruneObj(o);
+      if (o.playerResponse && typeof o.playerResponse === 'object') {
+        pruneObj(o.playerResponse);
       }
-      if (o.ytInitialPlayerResponse) {
-        delete o.ytInitialPlayerResponse.playerAds;
-        delete o.ytInitialPlayerResponse.adPlacements;
-        delete o.ytInitialPlayerResponse.adSlots;
+      if (
+        o.ytInitialPlayerResponse &&
+        typeof o.ytInitialPlayerResponse === 'object'
+      ) {
+        pruneObj(o.ytInitialPlayerResponse);
       }
 
       return o;
@@ -60,6 +67,18 @@ export const inject = (contextBridge: ContextBridge): void => {
       cValue: 'undefined',
     },
     {
+      chain: 'playerResponse.playerAds',
+      cValue: 'undefined',
+    },
+    {
+      chain: 'playerResponse.adSlots',
+      cValue: 'undefined',
+    },
+    {
+      chain: 'playerResponse.adBreakHeartbeatParams',
+      cValue: 'undefined',
+    },
+    {
       chain: 'ytInitialPlayerResponse.playerAds',
       cValue: 'undefined',
     },
@@ -69,6 +88,10 @@ export const inject = (contextBridge: ContextBridge): void => {
     },
     {
       chain: 'ytInitialPlayerResponse.adSlots',
+      cValue: 'undefined',
+    },
+    {
+      chain: 'ytInitialPlayerResponse.adBreakHeartbeatParams',
       cValue: 'undefined',
     },
   ];

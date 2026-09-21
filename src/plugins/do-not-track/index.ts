@@ -130,15 +130,17 @@ export default createPlugin({
     async start({ getConfig }) {
       const config = await getConfig();
 
-      if (config.blocker === blockers.InPlayer && !isInjected()) {
+      if (!isInjected()) {
         inject(contextBridge);
         await webFrame.executeJavaScript(this.script);
-      } else if (config.blocker === blockers.WithBlocklists) {
+      }
+
+      if (config.blocker === blockers.WithBlocklists) {
         await injectCliqzPreload();
       }
     },
-    async onConfigChange(newConfig) {
-      if (newConfig.blocker === blockers.InPlayer && !isInjected()) {
+    async onConfigChange(_newConfig) {
+      if (!isInjected()) {
         inject(contextBridge);
         await webFrame.executeJavaScript(this.script);
       }

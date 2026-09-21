@@ -19,9 +19,12 @@ const SKIP_BUTTON_SELECTORS = [
   '.ytp-ad-skip-button-modern',
   '.ytp-ad-skip-button',
   '.ytp-skip-ad-button',
+  '.ytp-ad-skip-button-slot',
   'button.videoAdUiSkipButton',
+  '.videoAdUiAction',
   '[class*="skip-button" i]',
   '[id*="skip-button" i]',
+  '.ytmusic-player-overlay-renderer[ad-interrupting] button',
 ].join(', ');
 
 const AD_SHOWING_SELECTOR = [
@@ -29,6 +32,9 @@ const AD_SHOWING_SELECTOR = [
   '.ad-interrupting',
   '.video-ads',
   '.ytp-ad-player-overlay',
+  '.ytp-ad-module',
+  '.ytp-ad-overlay-container',
+  'ytmusic-player[ad-interrupting]',
 ].join(', ');
 
 const isVisible = (el: Element): el is HTMLElement =>
@@ -118,21 +124,41 @@ export default createPlugin<
         }
 
         const adShowing = isAdShowing(player, video);
-        if (adShowing && this.config.muteDuringAds) {
-          if (!this.wasMutedByPlugin) {
+        if (adShowing) {
+          // Instantly fast-forward through the ad so it completes in milliseconds
+          try {
+            video.playbackRate = 16;
+            if (Number.isFinite(video.duration) && video.duration > 0) {
+              video.currentTime = video.duration;
+            }
+          } catch {
+            // Ignore if video state rejects seeking
+          }
+
+          if (skipButton) {
+            skipButton.click();
+          }
+
+          if (this.config.muteDuringAds && !this.wasMutedByPlugin) {
             this.userWasMuted = video.muted;
             if (!video.muted) {
-              console.log('[AdSkip] Muting for unskippable ad');
+              console.log('[AdSkip] Muting for ad');
               video.muted = true;
             }
             this.wasMutedByPlugin = true;
           }
-        } else if (this.wasMutedByPlugin) {
-          if (!this.userWasMuted) {
-            console.log('[AdSkip] Ad over, restoring volume');
-            video.muted = false;
+        } else {
+          if (video.playbackRate === 16) {
+            video.playbackRate = 1;
           }
-          this.wasMutedByPlugin = false;
+
+          if (this.wasMutedByPlugin) {
+            if (!this.userWasMuted) {
+              console.log('[AdSkip] Ad over, restoring volume');
+              video.muted = false;
+            }
+            this.wasMutedByPlugin = false;
+          }
         }
       };
 
@@ -158,8 +184,12 @@ export default createPlugin<
         this.pollInterval = undefined;
       }
 
+      const video = document.querySelector<HTMLVideoElement>('video');
+      if (video && video.playbackRate === 16) {
+        video.playbackRate = 1;
+      }
+
       if (this.wasMutedByPlugin && !this.userWasMuted) {
-        const video = document.querySelector<HTMLVideoElement>('video');
         if (video) video.muted = false;
       }
       this.wasMutedByPlugin = false;

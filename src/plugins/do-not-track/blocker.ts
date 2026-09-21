@@ -44,13 +44,21 @@ const doLoadTrackerBlockerEngine = async (
     console.error('Error fetching tracker blocker list index', error);
   }
   const tbSources = TbSourcesSchema.safeParse(tbSourcesJson);
+  const fallbackLists = [
+    'https://raw.githubusercontent.com/kbinani/adblock-youtube-ads/master/signed.txt',
+    'https://raw.githubusercontent.com/ghostery/adblocker/master/packages/adblocker/assets/ublock-origin/filters.txt',
+    'https://raw.githubusercontent.com/ghostery/adblocker/master/packages/adblocker/assets/ublock-origin/quick-fixes.txt',
+    'https://raw.githubusercontent.com/ghostery/adblocker/master/packages/adblocker/assets/ublock-origin/unbreak.txt',
+    'https://easylist.to/easylist/easylist.txt',
+    'https://easylist.to/easylist/easyprivacy.txt',
+  ];
   const lists = [
     ...((disableDefaultLists && !Array.isArray(disableDefaultLists)) ||
     (Array.isArray(disableDefaultLists) && disableDefaultLists.length > 0)
       ? []
-      : tbSources.success
+      : tbSources.success && tbSources.data.tb.length > 0
         ? tbSources.data.tb
-        : []),
+        : fallbackLists),
     ...additionalBlockLists,
   ];
 

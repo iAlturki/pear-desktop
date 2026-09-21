@@ -47,17 +47,66 @@ export const onPlayerApiReady = async (
   /** Restore saved volume and setup tooltip */
   async function firstRun() {
     if (typeof options.savedVolume === 'number') {
+      // Pre-seed localStorage so YouTube Music's player engine initializes with savedVolume
+      try {
+        window.localStorage.setItem(
+          'yt-player-volume',
+          JSON.stringify({
+            data: JSON.stringify({ volume: options.savedVolume, muted: false }),
+            creation: Date.now(),
+          }),
+        );
+      } catch {
+        // Ignore localStorage errors
+      }
+
       // Set saved volume as tooltip
       setTooltip(options.savedVolume);
 
-      if (api.getVolume() !== options.savedVolume) {
-        setVolume(options.savedVolume);
-      }
+      setVolume(options.savedVolume);
     }
 
     setupPlaybar();
 
     setupLocalArrowShortcuts();
+
+    // When the track loads, re-assert volume so that YouTube's player initialization
+    // doesn't overwrite it with a default (e.g. 100), unless an active fade is underway.
+    const syncVolume = () => {
+      const video = document.querySelector<HTMLVideoElement>('video');
+      if ((video as unknown as { __isFading?: boolean })?.__isFading) {
+        return;
+      }
+
+      if (typeof options.savedVolume === 'number') {
+        if (api.getVolume() !== options.savedVolume) {
+          api.setVolume(options.savedVolume);
+        }
+        const targetRatio = options.savedVolume / 100;
+        if (video && Math.abs(video.volume - targetRatio) > 0.01) {
+          video.volume = targetRatio;
+        }
+        updateVolumeSlider();
+        setTooltip(options.savedVolume);
+      }
+    };
+
+    const video = document.querySelector<HTMLVideoElement>('video');
+    if (video) {
+      video.addEventListener('loadstart', syncVolume);
+      video.addEventListener('loadedmetadata', syncVolume);
+    }
+
+    document.addEventListener('videodatachange', ((e: CustomEvent<{ name?: string }>) => {
+      if (e.detail?.name === 'dataloaded') {
+        syncVolume();
+      }
+    }) as EventListener);
+
+    // Initial stabilization timers: ensures YouTube's delayed player initialization
+    // does not leave the slider at default (33%) when firstly opened
+    setTimeout(syncVolume, 600);
+    setTimeout(syncVolume, 1800);
 
     // Workaround: computedStyleMap().get(string) returns CSSKeywordValue instead of CSSStyleValue
     const noVid =
@@ -126,12 +175,32 @@ export const onPlayerApiReady = async (
   function saveVolume(volume: number) {
     options.savedVolume = volume;
     writeOptions();
+    try {
+      window.localStorage.setItem(
+        'yt-player-volume',
+        JSON.stringify({
+          data: JSON.stringify({ volume, muted: false }),
+          creation: Date.now(),
+        }),
+      );
+    } catch {
+      // Ignore localStorage errors
+    }
   }
 
   /** Add onwheel event to play bar and also track if play bar is hovered */
   function setupPlaybar() {
     const playerbar = $<HTMLElement>('ytmusic-player-bar');
-    if (!playerbar) return;
+    if (!playerbar) {
+      const observer = new MutationObserver(() => {
+        if ($('ytmusic-player-bar')) {
+          observer.disconnect();
+          setupPlaybar();
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+      return;
+    }
 
     playerbar.addEventListener('wheel', (event) => {
       event.preventDefault();
@@ -142,13 +211,42 @@ export const onPlayerApiReady = async (
     // Keep track of mouse position for showVolumeSlider()
     playerbar.addEventListener('mouseenter', () => {
       playerbar.classList.add('on-hover');
+      // Proactively ensure the volume slider represents the actual saved volume when hovered
+      if (typeof options.savedVolume === 'number') {
+        const slider = $('#volume-slider') as HTMLInputElement | null;
+        if (slider && Math.abs(Number(slider.value) - options.savedVolume) > 1) {
+          updateVolumeSlider();
+        }
+      }
     });
 
     playerbar.addEventListener('mouseleave', () => {
       playerbar.classList.remove('on-hover');
     });
 
-    setupSliderObserver();
+    ensureSliderSetup();
+  }
+
+  function ensureSliderSetup() {
+    const slider = $('#volume-slider');
+    if (slider) {
+      setupSliderObserver();
+      if (typeof options.savedVolume === 'number') {
+        updateVolumeSlider();
+      }
+      return;
+    }
+
+    const observer = new MutationObserver(() => {
+      if ($('#volume-slider')) {
+        observer.disconnect();
+        setupSliderObserver();
+        if (typeof options.savedVolume === 'number') {
+          updateVolumeSlider();
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
   }
 
   /** Save volume + Update the volume tooltip when volume-slider is manually changed */
@@ -184,10 +282,16 @@ export const onPlayerApiReady = async (
 
   function setVolume(value: number) {
     api.setVolume(value);
+
+    const video = document.querySelector<HTMLVideoElement>('video');
+    if (video) {
+      video.volume = value / 100;
+    }
+
     // Save the new volume
     saveVolume(value);
 
-    // Change slider position (important)
+    // Change slider position and update playerbar speaker icon (important)
     updateVolumeSlider();
 
     // Change tooltips to new value
@@ -211,15 +315,34 @@ export const onPlayerApiReady = async (
 
   function updateVolumeSlider() {
     const savedVolume = options.savedVolume ?? 0;
-    // Slider value automatically rounds to multiples of 5
+    const sliderValue = savedVolume > 0 && savedVolume < 5 ? 5 : savedVolume;
     for (const slider of ['#volume-slider', '#expand-volume-slider']) {
-      const silderElement = $<HTMLInputElement>(slider);
-      if (silderElement) {
-        silderElement.value = String(
-          savedVolume > 0 && savedVolume < 5 ? 5 : savedVolume,
-        );
+      const sliderElement =
+        $<
+          HTMLElement & {
+            value?: string | number;
+            immediateValue?: number;
+            _updateKnob?: (val: number) => void;
+          }
+        >(slider);
+      if (sliderElement) {
+        sliderElement.value = sliderValue;
+        sliderElement.setAttribute('value', String(sliderValue));
+        if ('immediateValue' in sliderElement) {
+          sliderElement.immediateValue = sliderValue;
+        }
+        sliderElement._updateKnob?.(sliderValue);
+        sliderElement.dispatchEvent(new CustomEvent('immediate-value-change'));
+        sliderElement.dispatchEvent(new CustomEvent('change'));
       }
     }
+
+    // Sync playerbar so its internal volume state and speaker icon update
+    const playerbar =
+      $<HTMLElement & { updateVolume?: (vol: number) => void }>(
+        'ytmusic-player-bar',
+      );
+    playerbar?.updateVolume?.(savedVolume);
   }
 
   function showVolumeSlider() {

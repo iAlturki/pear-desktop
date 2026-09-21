@@ -165,6 +165,19 @@ item with no submenu (e.g. a standalone one-click toggle) would render with no c
 nothing on click, silently. If you add a top-level menu entry that isn't submenu-based, make sure
 `TitleBar.tsx`'s top-level render branch actually handles its `type`.
 
+**Asynchronous DOM events can fire after synchronous state flags have already reset.**
+When an automated fade-out ends, assigning `video.volume = 0` queues an asynchronous `volumechange`
+event in the browser. If your code resets `isFading = false` synchronously right when the fade
+calculation finishes, that queued event arrives *after* `isFading` is already false—causing an
+"ignore changes while fading" guard to fail and overwrite the remembered user volume with `0`. Every
+subsequent fade-in then fades from 0 to 0 (silence) permanently. Fix: capture initial state
+synchronously the instant the operation begins rather than relying on an asynchronous event listener
+with a boolean guard (see `src/plugins/fade-playback/index.ts`).
+
+**MediaSource Extensions (MSE) continuous playback does not fire `<video>`'s `'play'` event across automatic track transitions.**
+In YouTube Music's queue playback, continuous streaming appends new audio chunks to the existing MSE SourceBuffer without pausing the `<video>` element (`video.paused` stays `false`). Relying solely on `video.addEventListener('play', ...)` to trigger fade-in or state resets on autoskip will fail because `'play'` never fires. Listen to the `videodatachange` event (`detail.name === 'dataloaded'`) or `peard:src-changed` instead to reliably detect track transitions (see `src/plugins/fade-playback/index.ts`).
+
+
 ## Code style
 
 - Lint: `pnpm lint` (`oxlint --type-aware`)

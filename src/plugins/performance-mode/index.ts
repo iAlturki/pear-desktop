@@ -11,11 +11,11 @@ export type PerformanceModePluginConfig = {
   previouslyEnabled: string[];
 };
 
-// Purely visual/decorative plugins that meaningfully tax CPU/GPU without
-// being required for audio playback. video-toggle is included even though
-// it isn't itself heavy - leaving it running would fight this plugin's own
-// audio-only enforcement below whenever the user's video-toggle setting
-// disagrees with it.
+// Purely visual/decorative plugins and heavy audio DSP / background broadcast
+// plugins that tax CPU/GPU/memory without being required for basic audio playback.
+// video-toggle is included even though it isn't itself heavy - leaving it running
+// would fight this plugin's own audio-only enforcement below whenever the user's
+// video-toggle setting disagrees with it.
 const SUSPENDED_PLUGINS = [
   'synced-lyrics',
   'visualizer',
@@ -24,6 +24,10 @@ const SUSPENDED_PLUGINS = [
   'blur-nav-bar',
   'transparent-player',
   'video-toggle',
+  'equalizer',
+  'picture-in-picture',
+  'lumiastream',
+  'tuna-obs',
 ];
 
 export default createPlugin<
@@ -31,6 +35,7 @@ export default createPlugin<
   unknown,
   {
     config?: PerformanceModePluginConfig;
+    videoDataChangeListener?: EventListener;
     playerObserver?: MutationObserver;
     applyVideoSuppression(hide: boolean): void;
     suspendOtherPlugins(): Promise<void>;
@@ -48,16 +53,43 @@ export default createPlugin<
     applyVideoSuppression(hide) {
       document.body.classList.toggle('performance-mode-active', hide);
 
+      const video = document.querySelector<HTMLVideoElement>('video');
+      if (video) {
+        video.disablePictureInPicture = hide;
+        video.disableRemotePlayback = hide;
+      }
+
+      if (!hide) {
+        if (this.videoDataChangeListener) {
+          document.removeEventListener(
+            'videodatachange',
+            this.videoDataChangeListener,
+          );
+          this.videoDataChangeListener = undefined;
+        }
+
+        const player = document.querySelector<HTMLElement>('ytmusic-player');
+        if (player) {
+          this.playerObserver?.disconnect();
+          this.playerObserver = undefined;
+          player.setAttribute('playback-mode', 'OMV_PREFERRED');
+        }
+        try {
+          const moviePlayer =
+            document.querySelector<Element & { setPlaybackQualityRange?: (q: string) => void; setPlaybackQuality?: (q: string) => void }>('#movie_player');
+          moviePlayer?.setPlaybackQualityRange?.('auto');
+          moviePlayer?.setPlaybackQuality?.('auto');
+        } catch {
+          // Ignore
+        }
+        return;
+      }
+
       const player = document.querySelector<HTMLElement>('ytmusic-player');
       if (!player) return;
 
       this.playerObserver?.disconnect();
       this.playerObserver = undefined;
-
-      if (!hide) {
-        player.setAttribute('playback-mode', 'OMV_PREFERRED');
-        return;
-      }
 
       // YouTube Music's own code resets playback-mode back to
       // OMV_PREFERRED shortly after each track loads, so a one-time set
@@ -66,6 +98,14 @@ export default createPlugin<
       // actually stops the video stream from being fetched at all - not
       // just hiding it once it's already downloading.
       player.setAttribute('playback-mode', 'ATV_PREFERRED');
+      try {
+        const moviePlayer =
+          document.querySelector<Element & { setPlaybackQualityRange?: (q: string) => void; setPlaybackQuality?: (q: string) => void }>('#movie_player');
+        moviePlayer?.setPlaybackQualityRange?.('tiny');
+        moviePlayer?.setPlaybackQuality?.('tiny');
+      } catch {
+        // Ignore
+      }
       const observer = new MutationObserver(() => {
         if (player.getAttribute('playback-mode') !== 'ATV_PREFERRED') {
           player.setAttribute('playback-mode', 'ATV_PREFERRED');
@@ -73,6 +113,25 @@ export default createPlugin<
       });
       observer.observe(player, { attributeFilter: ['playback-mode'] });
       this.playerObserver = observer;
+
+      if (!this.videoDataChangeListener) {
+        this.videoDataChangeListener = ((e: CustomEvent<{ name?: string }>) => {
+          if (e.detail?.name === 'dataloaded') {
+            try {
+              const moviePlayer =
+                document.querySelector<Element & { setPlaybackQualityRange?: (q: string) => void; setPlaybackQuality?: (q: string) => void }>('#movie_player');
+              moviePlayer?.setPlaybackQualityRange?.('tiny');
+              moviePlayer?.setPlaybackQuality?.('tiny');
+            } catch {
+              // Ignore
+            }
+          }
+        }) as EventListener;
+        document.addEventListener(
+          'videodatachange',
+          this.videoDataChangeListener,
+        );
+      }
     },
 
     async suspendOtherPlugins() {
