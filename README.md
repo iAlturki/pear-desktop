@@ -151,6 +151,9 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
+For a tour of the codebase (architecture, the plugin system, and a list of non-obvious gotchas
+worth knowing before you touch plugin code), see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 Instead of installing pnpm on your system, you can also use [devcontainers](https://containers.dev/). You can use devcontainers either as a development environment in VS Code, or as a way to easily build the project without installing dependencies on your host system.
 
 Note that this has it's own limitations (for example, GUI doesn't work on, at least some, Linux hosts).
