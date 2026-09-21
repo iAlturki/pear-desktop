@@ -697,6 +697,10 @@
       "description": "Improve performance by enabling experimental scripts",
       "name": "Performance improvement [Beta]"
     },
+    "performance-mode": {
+      "description": "Cuts CPU/GPU usage to a minimum by switching to audio-only playback and turning off lyrics, visualizer, ambient mode, and other decorative effects, while keeping music playback unaffected",
+      "name": "Super Performance Mode"
+    },
     "picture-in-picture": {
       "description": "Allows to switch the app to picture-in-picture mode",
       "menu": {

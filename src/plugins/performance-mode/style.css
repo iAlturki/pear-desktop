@@ -1,0 +1,11 @@
+/* Switches the video area to the album-art view, the same visual result
+   video-toggle's own "audio-only" mode produces - kept as pure CSS (rather
+   than direct inline-style writes) so it survives YouTube Music's own DOM
+   churn on every track change without needing to re-apply it in JS. */
+body.performance-mode-active #song-video.ytmusic-player {
+  display: none !important;
+}
+
+body.performance-mode-active #song-image {
+  display: block !important;
+}

@@ -154,6 +154,24 @@ export const mainMenuTemplate = async (
 
   return [
     {
+      // Mirrors the "Super Performance Mode" plugin's own enabled checkbox
+      // (found under Plugins below) at the very top of the menu bar, since
+      // it's meant to be a quick one-click toggle, not something buried in
+      // a nested submenu. Both read/write the same underlying plugin
+      // enabled state, so toggling either one keeps the other in sync.
+      label: `⚡ ${t('plugins.performance-mode.name')}`,
+      type: 'checkbox',
+      checked: await config.plugins.isEnabled('performance-mode'),
+      click(item: MenuItem) {
+        if (item.checked) {
+          config.plugins.enable('performance-mode');
+        } else {
+          config.plugins.disable('performance-mode');
+        }
+        innerRefreshMenu();
+      },
+    },
+    {
       label: t('main.menu.plugins.label'),
       submenu: pluginMenus,
     },
