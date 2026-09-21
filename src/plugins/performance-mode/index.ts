@@ -101,30 +101,43 @@ export default createPlugin<
       });
     },
 
+    // Enabling/disabling a plugin runs start()/stop(), NOT onConfigChange -
+    // that hook only fires for an already-running plugin's other settings
+    // changing. The suspend/resume cascade has to live here; putting it in
+    // onConfigChange (as an earlier version of this file did) meant
+    // flipping the menu checkbox persisted enabled:true but never actually
+    // ran the code that disables ambient-mode/visualizer/etc, since
+    // onConfigChange either never fired for that transition or raced
+    // start() and found the plugin not yet in the loaded-plugin map.
     async start({ getConfig }) {
       this.config = await getConfig();
+      if (!this.config.enabled) return;
+
+      this.applyVideoSuppression(true);
+      // A fresh app launch with performance mode already on from a
+      // previous session also runs start() - previouslyEnabled already
+      // holds that session's snapshot, and re-suspending now would find
+      // everything already disabled and overwrite it with an empty list,
+      // losing what to restore later. Only suspend when there's nothing
+      // recorded yet.
+      if (!this.config.previouslyEnabled?.length) {
+        await this.suspendOtherPlugins();
+      }
     },
     onPlayerApiReady() {
+      // start() runs before the player element necessarily exists - once
+      // it does, re-assert suppression so the persistent observer above
+      // actually gets attached (a no-op if start() already managed to).
       if (this.config?.enabled) {
         this.applyVideoSuppression(true);
       }
     },
-    async onConfigChange(newConfig) {
-      const wasEnabled = this.config?.enabled ?? false;
+    onConfigChange(newConfig) {
       this.config = newConfig;
-      if (newConfig.enabled === wasEnabled) return;
-
-      this.applyVideoSuppression(newConfig.enabled);
-      if (newConfig.enabled) {
-        await this.suspendOtherPlugins();
-      } else {
-        this.resumeOtherPlugins();
-      }
     },
     stop() {
-      this.playerObserver?.disconnect();
-      this.playerObserver = undefined;
-      document.body.classList.remove('performance-mode-active');
+      this.applyVideoSuppression(false);
+      this.resumeOtherPlugins();
     },
   },
 });
