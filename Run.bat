@@ -22,10 +22,16 @@ if not exist "node_modules" (
 )
 
 :: Check if dist exists, build if missing
-if not exist "dist" (
+if not exist "dist\main\index.js" (
     echo [*] Building application bundles...
     call pnpm.cmd build
 )
 
-echo [*] Starting ytr-music...
-call pnpm.cmd start
+echo [*] Starting ytr-music (iALTURKi Edition)...
+if exist "node_modules\electron\dist\electron.exe" (
+    start "" "node_modules\electron\dist\electron.exe" .
+) else (
+    call pnpm.cmd start
+)
+echo [*] App launched successfully on your screen!
+
