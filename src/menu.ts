@@ -63,6 +63,38 @@ export const refreshMenu = async (win: BrowserWindow) => {
   }
 };
 
+export const showAboutDialog = (win: BrowserWindow) => {
+  dialog
+    .showMessageBox(win, {
+      type: 'info',
+      title: 'About ytr-music (iALTURKi Edition)',
+      message: 'ytr-music — iALTURKi Reconstructed Edition',
+      detail: [
+        'Lead Architect & Maintainer: iALTURKi',
+        'GitHub: https://github.com/iAlturki',
+        'Project: https://github.com/iAlturki/ytr-music',
+        'Version: 3.12.0',
+        '',
+        'Features:',
+        '• 100% Ad-Free Audio Engine (multi-source blocker & sponsor segment skipper)',
+        '• Super Performance Mode (extreme GPU, CPU & RAM reduction)',
+        '• Sample-Accurate Equal-Power Smooth Audio Transitions (pause/resume/skip)',
+        '• Zero-Glitch Resilient Volume Synchronization',
+        '',
+        'Copyright © 2026 iALTURKi. All rights reserved.',
+      ].join('\n'),
+      buttons: ['OK', 'Visit GitHub Profile', 'View Source Repository'],
+      defaultId: 0,
+    })
+    .then(({ response }) => {
+      if (response === 1) {
+        shell.openExternal('https://github.com/iAlturki');
+      } else if (response === 2) {
+        shell.openExternal('https://github.com/iAlturki/ytr-music');
+      }
+    });
+};
+
 export const mainMenuTemplate = async (
   win: BrowserWindow,
 ): Promise<MenuTemplate> => {
@@ -119,46 +151,127 @@ export const mainMenuTemplate = async (
   );
 
   const availablePlugins = Object.keys(await allPlugins());
-  const pluginMenus = await Promise.all(
-    availablePlugins
-      .sort((a, b) => {
-        const aPluginLabel = allPluginsStubs[a]?.name?.() ?? a;
-        const bPluginLabel = allPluginsStubs[b]?.name?.() ?? b;
+  const pluginMap = new Map<string, Electron.MenuItemConstructorOptions>();
 
-        return aPluginLabel.localeCompare(bPluginLabel);
-      })
-      .map(async (id) => {
-        const predefinedTemplate = menuResult.find((it) => it[0] === id);
-        if (predefinedTemplate) return predefinedTemplate[1];
+  await Promise.all(
+    availablePlugins.map(async (id) => {
+      const predefinedTemplate = menuResult.find((it) => it[0] === id);
+      if (predefinedTemplate) {
+        pluginMap.set(id, predefinedTemplate[1]);
+        return;
+      }
 
-        const plugin = allPluginsStubs[id];
-        const pluginLabel = plugin?.name?.() ?? id;
-        const pluginDescription = plugin?.description?.() ?? undefined;
-        const isNew = plugin?.addedVersion
-          ? satisfies(packageJson.version, plugin.addedVersion)
-          : false;
+      const plugin = allPluginsStubs[id];
+      const pluginLabel = plugin?.name?.() ?? id;
+      const pluginDescription = plugin?.description?.() ?? undefined;
+      const isNew = plugin?.addedVersion
+        ? satisfies(packageJson.version, plugin.addedVersion)
+        : false;
 
-        return pluginEnabledMenu(
+      pluginMap.set(
+        id,
+        await pluginEnabledMenu(
           id,
           pluginLabel,
           pluginDescription,
           isNew,
           true,
           innerRefreshMenu,
-        );
-      }),
+        ),
+      );
+    }),
   );
+
+  const getPluginItem = (id: string) => pluginMap.get(id);
+
+  // Group into clean, beautiful, intuitive categories (eliminating the bloated flat wall of 40+ names)
+  const audioPluginIds = [
+    'fade-playback',
+    'precise-volume',
+    'equalizer',
+    'skip-silences',
+    'exponential-volume',
+  ];
+  const audioPluginMenus = audioPluginIds
+    .map(getPluginItem)
+    .filter((item): item is Electron.MenuItemConstructorOptions => Boolean(item));
+
+  const adAndPerfPluginIds = [
+    'do-not-track',
+    'ad-skip',
+    'sponsorblock',
+    'performance-mode',
+    'video-toggle',
+    'quality-changer',
+    'disable-autoplay',
+  ];
+  const adAndPerfPluginMenus = adAndPerfPluginIds
+    .map(getPluginItem)
+    .filter((item): item is Electron.MenuItemConstructorOptions => Boolean(item));
+
+  const visualPluginIds = [
+    'visualizer',
+    'ambient-mode',
+    'album-color-theme',
+    'transparent-player',
+    'blur-nav-bar',
+  ];
+  const visualPluginMenus = visualPluginIds
+    .map(getPluginItem)
+    .filter((item): item is Electron.MenuItemConstructorOptions => Boolean(item));
+
+  const coreFeatureIds = [
+    'downloader',
+    'synced-lyrics',
+    'picture-in-picture',
+    'discord',
+    'taskbar-mediacontrol',
+    'in-app-menu',
+    'notifications',
+    'shortcuts',
+  ];
+  const coreFeatureMenus = coreFeatureIds
+    .map(getPluginItem)
+    .filter((item): item is Electron.MenuItemConstructorOptions => Boolean(item));
+
+  const handledIds = new Set([
+    ...audioPluginIds,
+    ...adAndPerfPluginIds,
+    ...visualPluginIds,
+    ...coreFeatureIds,
+  ]);
+  const otherPluginMenus = availablePlugins
+    .filter((id) => !handledIds.has(id))
+    .map(getPluginItem)
+    .filter((item): item is Electron.MenuItemConstructorOptions => Boolean(item));
+
+  const featurePluginMenus: Electron.MenuItemConstructorOptions[] = [
+    ...coreFeatureMenus,
+    ...(visualPluginMenus.length > 0
+      ? [
+          { type: 'separator' as const },
+          {
+            label: '🎨 Visual Themes & Effects',
+            submenu: visualPluginMenus,
+          },
+        ]
+      : []),
+    ...(otherPluginMenus.length > 0
+      ? [
+          { type: 'separator' as const },
+          {
+            label: '🧩 Other Plugins',
+            submenu: otherPluginMenus,
+          },
+        ]
+      : []),
+  ];
 
   const langResources = await languageResources();
   const availableLanguages = Object.keys(langResources);
 
   return [
     {
-      // Mirrors the "Super Performance Mode" plugin's own enabled checkbox
-      // (found under Plugins below) at the very top of the menu bar, since
-      // it's meant to be a quick one-click toggle, not something buried in
-      // a nested submenu. Both read/write the same underlying plugin
-      // enabled state, so toggling either one keeps the other in sync.
       label: `⚡ ${t('plugins.performance-mode.name')}`,
       type: 'checkbox',
       checked: await config.plugins.isEnabled('performance-mode'),
@@ -172,8 +285,16 @@ export const mainMenuTemplate = async (
       },
     },
     {
-      label: t('main.menu.plugins.label'),
-      submenu: pluginMenus,
+      label: '🎵 Audio',
+      submenu: audioPluginMenus,
+    },
+    {
+      label: '🛡️ Ad-Free & Speed',
+      submenu: adAndPerfPluginMenus,
+    },
+    {
+      label: '✨ Features',
+      submenu: featurePluginMenus,
     },
     {
       label: t('main.menu.options.label'),
@@ -710,8 +831,43 @@ export const mainMenuTemplate = async (
       ],
     },
     {
-      label: t('main.menu.about'),
-      submenu: [{ role: 'about' }],
+      label: 'iALTURKi Edition',
+      submenu: [
+        {
+          label: 'About ytr-music (iALTURKi Edition)',
+          click() {
+            showAboutDialog(win);
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Lead Architect: iALTURKi',
+          click() {
+            shell.openExternal('https://github.com/iAlturki');
+          },
+        },
+        {
+          label: 'GitHub Profile (iALTURKi)',
+          click() {
+            shell.openExternal('https://github.com/iAlturki');
+          },
+        },
+        {
+          label: 'Source Code (GitHub Repository)',
+          click() {
+            shell.openExternal('https://github.com/iAlturki/ytr-music');
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Copyright © 2026 iALTURKi. All rights reserved.',
+          enabled: false,
+        },
+        {
+          label: '100% Ad-Free • Super Performance • Smooth Audio',
+          enabled: false,
+        },
+      ],
     },
   ];
 };
@@ -722,7 +878,12 @@ export const setApplicationMenu = async (win: Electron.BrowserWindow) => {
     menuTemplate.unshift({
       label: name,
       submenu: [
-        { role: 'about' },
+        {
+          label: 'About ytr-music (iALTURKi Edition)',
+          click() {
+            showAboutDialog(win);
+          },
+        },
         { type: 'separator' },
         { role: 'hide' },
         { role: 'hideOthers' },

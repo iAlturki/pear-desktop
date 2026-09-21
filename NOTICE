@@ -1,16 +1,12 @@
-ytr-music (Reconstructed & High-Reliability Edition)
+ytr-music (iALTURKi Edition)
 Copyright (c) 2026 iALTURKi
-https://github.com/iALTURKi
+GitHub: https://github.com/iAlturki
+Repository: https://github.com/iAlturki/ytr-music
 
 Licensed under the MIT License (see LICENSE).
 
-Based on the project originally created by th-ch (https://github.com/pear-devs/pear-desktop).
-This is an independent, reconstructed, high-reliability edition featuring:
-- 100% ad-free playback engine with payload pruner & multi-source network blocker
-- Super Performance Mode with background GPU video decode throttling
-- Sample-accurate, continuous smooth audio transition engine (pause, skip, resume, autoskip)
-- Resilient startup volume state synchronization with zero-discontinuity logarithmic scaling
-
-If you redistribute, fork, or build on this software, you must retain the
-copyright notice, this list of conditions, and the disclaimer in all copies
-or substantial portions of the Software.
+Features:
+- 100% Ad-Free Audio Engine with zero streaming interruptions
+- Super Performance Mode with background decode throttling
+- Equal-Power butter-smooth transitions across pause, skip, and resume
+- Self-healing volume state synchronization

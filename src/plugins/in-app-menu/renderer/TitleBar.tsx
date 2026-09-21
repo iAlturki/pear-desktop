@@ -74,6 +74,37 @@ const separatorStyle = cacheNoArgs(
   `,
 );
 
+const badgeContainerStyle = cacheNoArgs(
+  () => css`
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    -webkit-app-region: no-drag;
+  `,
+);
+
+const badgeLinkStyle = cacheNoArgs(
+  () => css`
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 11px;
+    font-family: inherit;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    padding: 2px 10px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+
+    &:hover {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.12);
+    }
+  `,
+);
+
 const animationStyle = cacheNoArgs(() => ({
   enter: css`
     opacity: 0;
@@ -467,8 +498,19 @@ export const TitleBar = (props: TitleBarProps) => {
           </Index>
         </Show>
       </TransitionGroup>
+      <div class={badgeContainerStyle()}>
+        <a
+          class={badgeLinkStyle()}
+          href="https://github.com/iAlturki"
+          target="_blank"
+          title="ytr-music (iALTURKi Edition) - Visit GitHub Profile"
+        >
+          <span style={{ 'color': '#ff3d00', 'font-weight': 700 }}>ytr-music</span>
+          <span style={{ 'color': 'rgba(255, 255, 255, 0.3)' }}>•</span>
+          <span style={{ 'font-weight': 500 }}>iALTURKi Edition © 2026</span>
+        </a>
+      </div>
       <Show when={props.enableController}>
-        <div style={{ flex: 1 }} />
         <WindowController
           isMaximize={isMaximized()}
           onClose={handleClose}

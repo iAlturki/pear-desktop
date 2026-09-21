@@ -40,7 +40,6 @@ import {
 import { forceUnloadMenuPlugin } from '@/loader/menu';
 import { refreshMenu, setApplicationMenu } from '@/menu';
 import musicPlayerCss from '@/music-player.css?inline';
-import { defaultAuthProxyConfig } from '@/plugins/auth-proxy-adapter/config';
 import { fileExists, injectCSS, injectCSSAsFile } from '@/plugins/utils/main';
 import { restart, setupAppControls } from '@/providers/app-controls';
 import {
@@ -131,14 +130,9 @@ if (is.linux()) {
   }
 
   // Overrides WM_CLASS for X11 to correspond to icon filename
-  app.setName(
-    'com.github.th-ch.\u0079\u006f\u0075\u0074\u0075\u0062\u0065\u002d\u006d\u0075\u0073\u0069\u0063',
-  );
+  app.setName('com.github.iAlturki.ytr-music');
   // for wayland
-  app.commandLine.appendSwitch(
-    'class',
-    'com.github.th-ch.\u0079\u006f\u0075\u0074\u0075\u0062\u0065\u002d\u006d\u0075\u0073\u0069\u0063',
-  );
+  app.commandLine.appendSwitch('class', 'com.github.iAlturki.ytr-music');
 }
 
 if (disableHardwareAcceleration) {
@@ -150,22 +144,7 @@ if (disableHardwareAcceleration) {
 app.commandLine.appendSwitch('disable-features', disabledFeatures.join(','));
 
 if (config.get('options.proxy')) {
-  const authProxyEnabled = await config.plugins.isEnabled('auth-proxy-adapter');
-
-  let proxyToUse = '';
-  if (authProxyEnabled) {
-    // Use proxy from Auth-Proxy-Adapter plugin
-    const authProxyConfig = deepmerge(
-      defaultAuthProxyConfig,
-      config.get('plugins.auth-proxy-adapter') ?? {},
-    ) as typeof defaultAuthProxyConfig;
-
-    const { hostname, port } = authProxyConfig;
-    proxyToUse = `socks5://${hostname}:${port}`;
-  } else if (config.get('options.proxy')) {
-    // Use global proxy settings
-    proxyToUse = config.get('options.proxy');
-  }
+  const proxyToUse = config.get('options.proxy');
   console.log(LoggerPrefix, `Using proxy: ${proxyToUse}`);
   app.commandLine.appendSwitch('proxy-server', proxyToUse);
 }
@@ -585,6 +564,11 @@ async function createMainWindow() {
     }
   });
 
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
   win.webContents.loadURL(urlToLoad);
 
   return win;
@@ -733,8 +717,7 @@ app.whenReady().then(async () => {
 
   // Register appID on windows
   if (is.windows()) {
-    const appID =
-      'com.github.th-ch.\u0079\u006f\u0075\u0074\u0075\u0062\u0065\u002d\u006d\u0075\u0073\u0069\u0063';
+    const appID = 'com.github.iAlturki.ytr-music';
     app.setAppUserModelId(appID);
     const appLocation = process.execPath;
     const appData = app.getPath('appData');
