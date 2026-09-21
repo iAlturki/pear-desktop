@@ -84,7 +84,11 @@ export const setUpTray = (app: Electron.App, win: Electron.BrowserWindow) => {
       win.hide();
       app.dock?.hide();
     } else {
+      if (win.isMinimized()) {
+        win.restore();
+      }
       win.show();
+      win.focus();
       app.dock?.show();
     }
   });
@@ -111,7 +115,11 @@ export const setUpTray = (app: Electron.App, win: Electron.BrowserWindow) => {
     {
       label: t('main.tray.show'),
       click() {
+        if (win.isMinimized()) {
+          win.restore();
+        }
         win.show();
+        win.focus();
         app.dock?.show();
       },
     },

@@ -534,11 +534,26 @@ async function createMainWindow() {
     }, 600);
   }
 
-  win.once('ready-to-show', () => {
-    if (config.get('options.appVisible')) {
-      win.show();
+  let windowShown = false;
+  const showWindow = () => {
+    if (windowShown || win.isDestroyed()) {
+      return;
     }
-  });
+    if (config.get('options.appVisible')) {
+      windowShown = true;
+      if (win.isMinimized()) {
+        win.restore();
+      }
+      win.show();
+      win.focus();
+    }
+  };
+
+  win.once('ready-to-show', showWindow);
+  win.webContents.once('dom-ready', showWindow);
+  win.webContents.once('did-finish-load', showWindow);
+  const showFallbackTimeout = setTimeout(showWindow, 1000);
+  win.once('show', () => clearTimeout(showFallbackTimeout));
 
   removeContentSecurityPolicy();
 
