@@ -8,9 +8,11 @@ echo   100%% Ad-Free ^| Super Performance ^| Smooth Audio
 echo ===================================================
 echo.
 
-:: Kill previous running electron instances for this repo to ensure new code loads
+:: Kill previous running app instances for this repo to ensure new code loads
 echo [*] Terminating stale app instances...
 taskkill /F /IM electron.exe >nul 2>&1
+taskkill /F /IM "YouTube Music.exe" >nul 2>&1
+
 
 :: Move to project directory
 cd /d "%~dp0"
