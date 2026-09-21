@@ -221,6 +221,7 @@ export const mainMenuTemplate = async (
     .filter((item): item is Electron.MenuItemConstructorOptions => Boolean(item));
 
   const coreFeatureIds = [
+    'miniplayer',
     'downloader',
     'synced-lyrics',
     'picture-in-picture',
