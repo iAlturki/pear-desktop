@@ -72,6 +72,16 @@ export class VolumeFader {
   private fadeDuration: number = 1000;
   private active: boolean = false;
   private fade: VolumeFade | undefined;
+  // Safety net for the rAF starvation bug. requestAnimationFrame does NOT fire
+  // while the window is minimised or occluded, so a fade started (or still
+  // running) at that moment would never reach its final tick — the one that
+  // assigns the target volume and fires the callback. The media element then
+  // keeps playing at whatever volume the last tick left, which for a fade-in
+  // is the hard `volume = 0` its caller set just before. Result: the track
+  // plays, the timeline advances, and there is no audio.
+  // setTimeout is throttled in background windows but, unlike rAF, it still
+  // fires — so it can always finish what rAF abandoned.
+  private watchdog: ReturnType<typeof setTimeout> | undefined;
 
   /**
    * VolumeFader Constructor
@@ -215,6 +225,11 @@ export class VolumeFader {
     // Set fader to be inactive
     this.active = false;
 
+    // Drop the safety net too. stop() means "interrupt this fade", so the
+    // watchdog must not fire later and jump the volume to a target the caller
+    // has already abandoned.
+    this.clearWatchdog();
+
     // Return instance for chaining
     return this;
   }
@@ -272,6 +287,20 @@ export class VolumeFader {
       callback,
     };
 
+    // Arm the safety net before starting, so it covers even the case where the
+    // window is already hidden and rAF never delivers a single tick. The slack
+    // keeps it from racing a healthy fade's own final tick; a background
+    // setTimeout may fire late, which is fine - late is still finite, and the
+    // failure it replaces was permanent.
+    this.clearWatchdog();
+    this.watchdog = setTimeout(() => {
+      this.watchdog = undefined;
+      if (this.active && this.fade) {
+        this.logger?.('Fade watchdog fired: rAF stalled, completing.');
+        this.completeFade();
+      }
+    }, this.fadeDuration + 250);
+
     // Start fading
     this.start();
 
@@ -301,6 +330,16 @@ export class VolumeFader {
       // Get current time
       const now = Date.now();
 
+      // Nothing is animating in a window nobody can see, and rAF will not call
+      // us again while it is hidden. Land on the target now rather than leave
+      // the element stranded at an intermediate volume - silence is a far worse
+      // outcome than a skipped ramp.
+      if (typeof document !== 'undefined' && document.hidden) {
+        this.logger?.('Document hidden mid-fade; completing immediately.');
+        this.completeFade();
+        return;
+      }
+
       // Time left for fading?
       if (now < this.fade.time.end) {
         // Compute current fade progress
@@ -322,18 +361,45 @@ export class VolumeFader {
         // Log end of fade
         this.logger?.('Fade to ' + String(this.fade.volume.end) + ' complete.');
 
-        // Time is up, jump to target volume
-        this.media.volume = this.scale.internalToVolume(this.fade.volume.end);
-
-        // Set fader to be inactive
-        this.active = false;
-
-        // Done, call back (if callable)
-        if (typeof this.fade.callback === 'function') this.fade.callback();
-
-        // Clear fade
-        this.fade = undefined;
+        this.completeFade();
       }
+    }
+  }
+
+  /**
+   * Internal: Land on the fade's target volume and finish.
+   *
+   * Extracted so that the three paths which must all end the same way share one
+   * implementation: the normal final tick, the document-hidden shortcut, and
+   * the watchdog that fires when requestAnimationFrame stopped calling us.
+   * Every one of them must assign the target volume AND run the callback -
+   * skipping either is what leaves playback silent or a caller's `isFading`
+   * flag stuck true forever.
+   */
+  private completeFade() {
+    if (!this.fade) return;
+
+    const { callback, volume } = this.fade;
+
+    // Jump to target volume
+    this.media.volume = this.scale.internalToVolume(volume.end);
+
+    // Set fader to be inactive and clear the safety net
+    this.active = false;
+    this.clearWatchdog();
+
+    // Clear fade BEFORE the callback: callers routinely start a new fade from
+    // inside it, and clearing afterwards would silently discard that new fade.
+    this.fade = undefined;
+
+    // Done, call back (if callable)
+    if (typeof callback === 'function') callback();
+  }
+
+  private clearWatchdog() {
+    if (this.watchdog !== undefined) {
+      clearTimeout(this.watchdog);
+      this.watchdog = undefined;
     }
   }
 

@@ -192,8 +192,23 @@ export default createPlugin<
         }
         this.weTriggeredFadeOut = false;
 
-        this.isFading = true;
         const targetVolume = this.volumeBeforeFadeOut;
+
+        // A hidden window gets no ramp at all. requestAnimationFrame - which
+        // drives the fade - does not fire while the window is minimised or
+        // occluded, so the `volume = 0` below would be the LAST volume ever
+        // assigned: the track plays on in silence until something happens to
+        // wake the renderer. Restoring directly is both correct and invisible,
+        // because there is nobody watching a hidden window to see a fade.
+        // (VolumeFader now also guards this itself; this keeps the dangerous
+        // assignment from ever being reached in the first place.)
+        if (typeof document !== 'undefined' && document.hidden) {
+          this.isFading = false;
+          video.volume = targetVolume;
+          return;
+        }
+
+        this.isFading = true;
         video.volume = 0;
         this.fader!.setFadeDuration(
           Math.max(1, this.config.fadeInDuration || 0),

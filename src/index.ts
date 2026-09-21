@@ -403,6 +403,18 @@ async function createMainWindow() {
     show: false,
     webPreferences: {
       contextIsolation: true,
+      // A music player is a background app by definition: the window spends most
+      // of its life minimised, and that is exactly when the transport controls
+      // are used. Chromium's default background throttling makes the minimised
+      // renderer unable to act on what the main process sends it, so the
+      // taskbar thumbnail buttons, media keys and any IPC-driven control fire
+      // but do nothing. MEASURED on this build: with throttling at its default
+      // `true`, `webContents.send('peard:next-video')` changed the track while
+      // the window was visible and did nothing at all while it was minimised;
+      // flipping this one flag at runtime made the identical call work
+      // minimised. The same throttling is what stalls requestAnimationFrame and
+      // strands the fade-playback volume ramp at 0 (see volume-fader.ts).
+      backgroundThrottling: false,
       preload: path.join(__dirname, '..', 'preload', 'preload.cjs'),
       ...(isTesting()
         ? undefined
