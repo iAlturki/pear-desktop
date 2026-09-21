@@ -51,7 +51,6 @@ export default createPlugin<
     // corrupting the remembered value to 0).
     volumeBeforeFadeOut: number;
     isFading: boolean;
-    weTriggeredFadeOut: boolean;
     endFadeTriggered: boolean;
     endPollTimer?: ReturnType<typeof setInterval> | null;
     originalPauseVideo?: () => void;
@@ -173,7 +172,6 @@ export default createPlugin<
   renderer: {
     volumeBeforeFadeOut: 1,
     isFading: false,
-    weTriggeredFadeOut: false,
     endFadeTriggered: false,
     endPollTimer: null,
 
@@ -222,7 +220,6 @@ export default createPlugin<
                 false;
               this.video.volume = 0;
             }
-            this.weTriggeredFadeOut = true;
           });
         }
       }, 20);
@@ -297,7 +294,6 @@ export default createPlugin<
           (video as unknown as { __isFading?: boolean }).__isFading = false;
           (window as unknown as { __isAudioFading?: boolean }).__isAudioFading =
             false;
-          this.weTriggeredFadeOut = true;
           video.volume = 0;
         });
       };
@@ -307,6 +303,12 @@ export default createPlugin<
       this.originalVideoPlay = origVideoPlay;
       video.play = async () => {
         if (this.config?.enabled) {
+          if (this.isFading) {
+            this.fader?.stop();
+            this.isFading = false;
+            (video as unknown as { __isFading?: boolean }).__isFading = false;
+            (window as unknown as { __isAudioFading?: boolean }).__isAudioFading = false;
+          }
           video.volume = 0;
         }
         return origVideoPlay();
@@ -460,7 +462,6 @@ export default createPlugin<
           (video as unknown as { __isFading?: boolean }).__isFading = false;
           (window as unknown as { __isAudioFading?: boolean }).__isAudioFading =
             false;
-          this.weTriggeredFadeOut = true;
           video.volume = 0;
           this.originalNextVideo!();
         });
@@ -495,14 +496,18 @@ export default createPlugin<
           (video as unknown as { __isFading?: boolean }).__isFading = false;
           (window as unknown as { __isAudioFading?: boolean }).__isAudioFading =
             false;
-          this.weTriggeredFadeOut = true;
           video.volume = 0;
           this.originalPreviousVideo!();
         });
       };
 
       // 8. Skipping tracks via player bar buttons
+      let isPerformingSkip = false;
       this.skipClickListener = (event: MouseEvent) => {
+        if (isPerformingSkip) {
+          return;
+        }
+
         const button = event
           .composedPath()
           .find(
@@ -521,13 +526,7 @@ export default createPlugin<
           return;
         }
 
-        if (this.isFading || this.weTriggeredFadeOut) {
-          event.preventDefault();
-          event.stopImmediatePropagation();
-          return;
-        }
-
-        if (video.paused) {
+        if (this.isFading || video.paused) {
           return;
         }
 
@@ -551,11 +550,12 @@ export default createPlugin<
           (video as unknown as { __isFading?: boolean }).__isFading = false;
           (window as unknown as { __isAudioFading?: boolean }).__isAudioFading =
             false;
-          this.weTriggeredFadeOut = true;
           video.volume = 0;
-          document.removeEventListener('click', this.skipClickListener!, true);
+          isPerformingSkip = true;
           button.click();
-          document.addEventListener('click', this.skipClickListener!, true);
+          setTimeout(() => {
+            isPerformingSkip = false;
+          }, 60);
         });
       };
       document.addEventListener('click', this.skipClickListener, true);

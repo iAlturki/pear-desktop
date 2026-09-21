@@ -16,10 +16,10 @@ let currentConfig: MiniplayerPluginConfig;
 let hoverDebounceTimer: NodeJS.Timeout | null = null;
 let isCurrentlyHovered = false;
 
-const IDLE_WIDTH = 330;
+const IDLE_WIDTH = 340;
 const IDLE_HEIGHT = 44;
-const EXPANDED_WIDTH = 330;
-const EXPANDED_HEIGHT = 185;
+const EXPANDED_WIDTH = 340;
+const EXPANDED_HEIGHT = 212;
 const MARGIN_RIGHT = 20;
 const MARGIN_BOTTOM = 14;
 
@@ -91,6 +91,7 @@ export const onMainLoad = async ({
       nodeIntegration: true,
       contextIsolation: false,
       sandbox: false,
+      webSecurity: false,
     },
   });
 
@@ -102,7 +103,21 @@ export const onMainLoad = async ({
   fs.writeFileSync(htmlPath, getMiniplayerHTML(), 'utf8');
   miniplayerWindow.loadFile(htmlPath);
 
-  // Re-adjust bounds on screen changes
+  const syncVolumeToMiniplayer = async () => {
+    if (!miniplayerWindow || miniplayerWindow.isDestroyed()) return;
+    try {
+      const vol = await mainWindow.webContents.executeJavaScript(
+        'Math.round((document.querySelector("video")?.volume ?? 0.5) * 100)',
+      );
+      if (typeof vol === 'number' && !isNaN(vol)) {
+        miniplayerWindow.webContents.send('miniplayer:update-volume', vol);
+      }
+    } catch {
+      // Ignored
+    }
+  };
+
+  // Re-adjust bounds on screen display metrics changes
   screen.on('display-metrics-changed', () => {
     if (!miniplayerWindow || miniplayerWindow.isDestroyed()) return;
     const targetBounds = isCurrentlyHovered ? getExpandedBounds() : getIdleBounds();
@@ -123,6 +138,7 @@ export const onMainLoad = async ({
       const targetBounds = getExpandedBounds();
       miniplayerWindow.setBounds(targetBounds);
       miniplayerWindow.webContents.send('miniplayer:set-expanded', true);
+      syncVolumeToMiniplayer();
     } else {
       isCurrentlyHovered = false;
       hoverDebounceTimer = setTimeout(() => {
@@ -149,7 +165,25 @@ export const onMainLoad = async ({
         controls.previous();
         break;
       }
+      case 'like': {
+        controls.like();
+        break;
+      }
+      case 'dislike': {
+        controls.dislike();
+        break;
+      }
     }
+  });
+
+  // Handle volume changes
+  ipcMain.on('miniplayer:volume', (_, volume: number) => {
+    controls.setVolume(volume);
+  });
+
+  // Handle mute toggle
+  ipcMain.on('miniplayer:mute', () => {
+    controls.muteUnmute();
   });
 
   // Handle seeking
@@ -200,6 +234,7 @@ export const onMainLoad = async ({
     if (lastKnownSongInfo && miniplayerWindow && !miniplayerWindow.isDestroyed()) {
       miniplayerWindow.webContents.send('miniplayer:update-track', lastKnownSongInfo);
     }
+    syncVolumeToMiniplayer();
     if (currentConfig.enabled) {
       showMiniplayer();
     }
