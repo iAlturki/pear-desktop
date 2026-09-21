@@ -7,8 +7,11 @@ export const getMiniplayerHTML = (): string => {
   <title>ytr-music Miniplayer</title>
   <style>
     :root {
-      --accent-color: #ff3d00;
-      --accent-glow: rgba(255, 61, 0, 0.45);
+      --accent-rgb: 255, 61, 0;
+      --accent-color: rgb(255, 61, 0);
+      --accent-glow: rgba(255, 61, 0, 0.50);
+      --secondary-rgb: 255, 120, 50;
+      --secondary-color: rgb(255, 120, 50);
     }
 
     * {
@@ -31,84 +34,62 @@ export const getMiniplayerHTML = (): string => {
       justify-content: flex-end;
     }
 
+    /* 10% Translucent Glassmorphism Card adapting dynamically to song colors */
     .card {
       width: 100%;
       height: 100%;
-      background: rgba(14, 15, 22, 0.94);
-      backdrop-filter: blur(32px) saturate(180%);
-      -webkit-backdrop-filter: blur(32px) saturate(180%);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-top: 1px solid rgba(255, 255, 255, 0.22);
+      background: linear-gradient(
+        135deg,
+        rgba(var(--accent-rgb), 0.16) 0%,
+        rgba(var(--secondary-rgb), 0.10) 45%,
+        rgba(10, 12, 18, 0.10) 100%
+      );
+      backdrop-filter: blur(28px) saturate(190%);
+      -webkit-backdrop-filter: blur(28px) saturate(190%);
+      border: 1px solid rgba(var(--accent-rgb), 0.32);
+      border-top: 1px solid rgba(var(--accent-rgb), 0.52);
       border-radius: 16px;
-      box-shadow: 0 16px 44px rgba(0, 0, 0, 0.72), 0 0 22px var(--accent-glow);
+      box-shadow: 0 16px 44px rgba(0, 0, 0, 0.65), 0 0 32px var(--accent-glow);
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      transition: box-shadow 0.3s ease, border-color 0.3s ease;
+      transition: box-shadow 0.4s ease, border-color 0.4s ease, background 0.4s ease;
       position: relative;
     }
 
-    /* Idle / Collapsed Layout (44px) */
-    .compact-view {
+    /* =======================================================
+       IDLE VIEW: Vertical Top-to-Bottom Dock (44px x 160px)
+       ======================================================= */
+    .compact-view.vertical-dock {
       display: flex;
+      flex-direction: column;
       align-items: center;
-      height: 44px;
-      min-height: 44px;
-      padding: 0 10px;
-      gap: 10px;
+      justify-content: space-around;
+      height: 100%;
+      width: 100%;
+      padding: 10px 4px;
       cursor: pointer;
+      position: relative;
     }
 
     .compact-art {
-      width: 30px;
-      height: 30px;
-      border-radius: 6px;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
       object-fit: cover;
-      background: #1a1a24;
+      background: rgba(20, 22, 32, 0.4);
       flex-shrink: 0;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6);
+      border: 1.5px solid rgba(255, 255, 255, 0.3);
     }
 
-    .compact-info {
-      flex: 1;
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      line-height: 1.25;
-    }
-
-    .compact-title {
-      font-size: 12px;
-      font-weight: 600;
-      color: #fff;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .compact-artist {
-      font-size: 10.5px;
-      color: rgba(255, 255, 255, 0.65);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .compact-controls {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      flex-shrink: 0;
-    }
-
-    .mini-btn {
+    .idle-ctrl-btn {
       background: transparent;
       border: none;
       outline: none;
-      color: rgba(255, 255, 255, 0.85);
-      width: 28px;
-      height: 28px;
+      color: rgba(255, 255, 255, 0.9);
+      width: 30px;
+      height: 30px;
       border-radius: 50%;
       display: flex;
       align-items: center;
@@ -117,53 +98,67 @@ export const getMiniplayerHTML = (): string => {
       transition: all 0.15s ease;
     }
 
-    .mini-btn:hover {
+    .idle-ctrl-btn:hover {
       color: #fff;
-      background: rgba(255, 255, 255, 0.15);
-      transform: scale(1.08);
+      background: rgba(255, 255, 255, 0.2);
+      transform: scale(1.1);
     }
 
-    .mini-btn:active {
+    .idle-ctrl-btn:active {
       transform: scale(0.95);
     }
 
-    .mini-btn svg {
-      width: 14px;
-      height: 14px;
+    .idle-ctrl-btn svg {
+      width: 15px;
+      height: 15px;
       fill: currentColor;
     }
 
-    .play-btn-circle {
-      background: var(--accent-color);
+    /* Resume / Pause Icon with High-Contrast White Outline */
+    .idle-play-btn {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, var(--accent-color), var(--secondary-color, var(--accent-color)));
       color: #fff;
-      box-shadow: 0 0 10px var(--accent-glow);
+      border: 2px solid #ffffff !important;
+      box-shadow: 0 0 0 2px var(--accent-color), 0 0 14px var(--accent-glow) !important;
     }
 
-    .play-btn-circle:hover {
-      background: var(--accent-color);
-      color: #fff;
-      filter: brightness(1.15);
-      box-shadow: 0 0 14px var(--accent-glow);
+    .idle-play-btn:hover {
+      filter: brightness(1.2);
+      box-shadow: 0 0 0 2.5px var(--accent-color), 0 0 18px var(--accent-glow) !important;
+      transform: scale(1.12);
     }
 
-    .progress-bar-thin {
+    .idle-play-btn svg,
+    .ctrl-btn.play-main svg {
+      stroke: #ffffff;
+      stroke-width: 1.2px;
+      paint-order: stroke fill;
+    }
+
+    .vertical-progress-bar {
       position: absolute;
-      bottom: 0;
       left: 0;
-      width: 100%;
-      height: 2.5px;
-      background: rgba(255, 255, 255, 0.12);
-    }
-
-    .progress-fill-thin {
+      top: 0;
+      width: 3px;
       height: 100%;
-      width: 0%;
-      background: var(--accent-color);
-      box-shadow: 0 0 8px var(--accent-glow);
-      transition: width 0.25s linear;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 2px;
+      overflow: hidden;
     }
 
-    /* Expanded View (Revealed when hovered) */
+    .vertical-progress-fill {
+      width: 100%;
+      height: 0%;
+      background: linear-gradient(180deg, var(--accent-color), var(--secondary-color, var(--accent-color)));
+      box-shadow: 0 0 8px var(--accent-glow);
+      transition: height 0.25s linear;
+    }
+
+    /* =======================================================
+       EXPANDED VIEW: Hovered Rich Card (340px x 224px)
+       ======================================================= */
     .expanded-view {
       display: none;
       flex-direction: column;
@@ -191,15 +186,17 @@ export const getMiniplayerHTML = (): string => {
       font-size: 10px;
       font-weight: 700;
       letter-spacing: 0.5px;
-      color: rgba(255, 255, 255, 0.55);
+      color: rgba(255, 255, 255, 0.7);
       text-transform: uppercase;
       display: flex;
       align-items: center;
       gap: 5px;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
     }
 
     .brand-tag span {
       color: var(--accent-color);
+      text-shadow: 0 0 10px var(--accent-glow);
     }
 
     .header-actions {
@@ -210,7 +207,7 @@ export const getMiniplayerHTML = (): string => {
     .icon-btn-small {
       background: transparent;
       border: none;
-      color: rgba(255, 255, 255, 0.6);
+      color: rgba(255, 255, 255, 0.7);
       width: 22px;
       height: 22px;
       border-radius: 4px;
@@ -223,7 +220,7 @@ export const getMiniplayerHTML = (): string => {
 
     .icon-btn-small:hover {
       color: #fff;
-      background: rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.18);
     }
 
     .icon-btn-small svg {
@@ -239,13 +236,14 @@ export const getMiniplayerHTML = (): string => {
     }
 
     .large-art {
-      width: 60px;
-      height: 60px;
-      border-radius: 8px;
+      width: 62px;
+      height: 62px;
+      border-radius: 9px;
       object-fit: cover;
-      background: #1a1a24;
+      background: rgba(20, 22, 32, 0.4);
       flex-shrink: 0;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.55);
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.18);
     }
 
     .details-col {
@@ -263,19 +261,21 @@ export const getMiniplayerHTML = (): string => {
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
     }
 
     .details-artist {
       font-size: 11.5px;
-      color: rgba(255, 255, 255, 0.75);
+      color: rgba(255, 255, 255, 0.82);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
     }
 
     .details-album {
       font-size: 10px;
-      color: rgba(255, 255, 255, 0.45);
+      color: rgba(255, 255, 255, 0.5);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -292,7 +292,7 @@ export const getMiniplayerHTML = (): string => {
     .seek-track {
       position: relative;
       height: 5px;
-      background: rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.18);
       border-radius: 3px;
       cursor: pointer;
       overflow: hidden;
@@ -306,17 +306,18 @@ export const getMiniplayerHTML = (): string => {
     .seek-fill {
       height: 100%;
       width: 0%;
-      background: var(--accent-color);
+      background: linear-gradient(90deg, var(--accent-color), var(--secondary-color, var(--accent-color)));
       border-radius: 3px;
-      box-shadow: 0 0 8px var(--accent-glow);
+      box-shadow: 0 0 10px var(--accent-glow);
     }
 
     .time-row {
       display: flex;
       justify-content: space-between;
       font-size: 9.5px;
-      color: rgba(255, 255, 255, 0.5);
+      color: rgba(255, 255, 255, 0.65);
       font-variant-numeric: tabular-nums;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
     }
 
     /* Transport Controls Row */
@@ -332,7 +333,7 @@ export const getMiniplayerHTML = (): string => {
       background: transparent;
       border: none;
       outline: none;
-      color: rgba(255, 255, 255, 0.8);
+      color: rgba(255, 255, 255, 0.85);
       width: 30px;
       height: 30px;
       border-radius: 50%;
@@ -345,7 +346,7 @@ export const getMiniplayerHTML = (): string => {
 
     .ctrl-btn:hover {
       color: #fff;
-      background: rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.18);
       transform: scale(1.1);
     }
 
@@ -359,18 +360,19 @@ export const getMiniplayerHTML = (): string => {
       fill: currentColor;
     }
 
+    /* Expanded Play Button with Crisp White Outline & Glow */
     .ctrl-btn.play-main {
       width: 38px;
       height: 38px;
-      background: var(--accent-color);
+      background: linear-gradient(135deg, var(--accent-color), var(--secondary-color, var(--accent-color)));
       color: #fff;
-      box-shadow: 0 4px 14px var(--accent-glow);
+      border: 2px solid #ffffff !important;
+      box-shadow: 0 0 0 2px var(--accent-color), 0 4px 18px var(--accent-glow) !important;
     }
 
     .ctrl-btn.play-main:hover {
-      background: var(--accent-color);
-      filter: brightness(1.15);
-      box-shadow: 0 4px 18px var(--accent-glow);
+      filter: brightness(1.2);
+      box-shadow: 0 0 0 2.5px var(--accent-color), 0 4px 22px var(--accent-glow) !important;
       transform: scale(1.08);
     }
 
@@ -392,7 +394,7 @@ export const getMiniplayerHTML = (): string => {
       background: transparent;
       border: none;
       outline: none;
-      color: rgba(255, 255, 255, 0.6);
+      color: rgba(255, 255, 255, 0.7);
       width: 22px;
       height: 22px;
       border-radius: 4px;
@@ -406,7 +408,7 @@ export const getMiniplayerHTML = (): string => {
 
     .vol-btn:hover {
       color: #fff;
-      background: rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.18);
     }
 
     .vol-btn svg {
@@ -426,7 +428,7 @@ export const getMiniplayerHTML = (): string => {
       width: 100%;
       height: 4px;
       border-radius: 2px;
-      background: rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.22);
       outline: none;
       cursor: pointer;
       transition: height 0.15s ease;
@@ -454,7 +456,7 @@ export const getMiniplayerHTML = (): string => {
 
     .vol-text {
       font-size: 9.5px;
-      color: rgba(255, 255, 255, 0.55);
+      color: rgba(255, 255, 255, 0.65);
       min-width: 28px;
       text-align: right;
       font-variant-numeric: tabular-nums;
@@ -464,27 +466,21 @@ export const getMiniplayerHTML = (): string => {
 </head>
 <body>
   <div class="card" id="card">
-    <!-- Collapsed View (Idle 44px) -->
-    <div class="compact-view" id="compact-view">
+    <!-- Collapsed View: Vertical Top-to-Bottom Dock -->
+    <div class="compact-view vertical-dock" id="compact-view">
       <img class="compact-art" id="compact-art" src="" alt="" style="display:none;" />
-      <div class="compact-info">
-        <div class="compact-title" id="compact-title">ytr-music (iALTURKi)</div>
-        <div class="compact-artist" id="compact-artist">Hover to expand</div>
-      </div>
-      <div class="compact-controls">
-        <button class="mini-btn play-btn-circle" id="compact-play-btn" title="Play/Pause">
-          <svg viewBox="0 0 24 24" id="compact-play-icon"><path d="M8 5v14l11-7z"/></svg>
-        </button>
-        <button class="mini-btn" id="compact-next-btn" title="Next Track">
-          <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
-        </button>
-      </div>
-      <div class="progress-bar-thin">
-        <div class="progress-fill-thin" id="progress-fill-thin"></div>
+      <button class="idle-ctrl-btn idle-play-btn" id="compact-play-btn" title="Play/Pause">
+        <svg viewBox="0 0 24 24" id="compact-play-icon"><path d="M8 5v14l11-7z"/></svg>
+      </button>
+      <button class="idle-ctrl-btn" id="compact-next-btn" title="Next Track">
+        <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+      </button>
+      <div class="vertical-progress-bar">
+        <div class="vertical-progress-fill" id="progress-fill-vertical"></div>
       </div>
     </div>
 
-    <!-- Expanded View (Hover ~212px) -->
+    <!-- Expanded View: Hovered Rich Card -->
     <div class="expanded-view" id="expanded-view">
       <div class="header-row">
         <div class="brand-tag"><span>ytr-music</span> • iALTURKi Edition</div>
@@ -552,9 +548,7 @@ export const getMiniplayerHTML = (): string => {
 
     const card = document.getElementById('card');
     const compactArt = document.getElementById('compact-art');
-    const compactTitle = document.getElementById('compact-title');
-    const compactArtist = document.getElementById('compact-artist');
-    const progressFillThin = document.getElementById('progress-fill-thin');
+    const progressFillVertical = document.getElementById('progress-fill-vertical');
 
     const largeArt = document.getElementById('large-art');
     const detailsTitle = document.getElementById('details-title');
@@ -605,13 +599,13 @@ export const getMiniplayerHTML = (): string => {
       currentElapsed = elapsed;
       if (duration && duration > 0) currentDuration = duration;
       const pct = currentDuration > 0 ? Math.min(100, Math.max(0, (currentElapsed / currentDuration) * 100)) : 0;
-      progressFillThin.style.width = pct + '%';
+      if (progressFillVertical) progressFillVertical.style.height = pct + '%';
       seekFill.style.width = pct + '%';
       elapsedTime.textContent = formatTime(currentElapsed);
       durationTime.textContent = formatTime(currentDuration);
     }
 
-    // Dynamic accent color extraction from artwork
+    // Dynamic dual-accent color palette extraction from album artwork
     function updateAccentColor(imgUrl) {
       if (!imgUrl || imgUrl === currentArtSrc) return;
       currentArtSrc = imgUrl;
@@ -621,15 +615,14 @@ export const getMiniplayerHTML = (): string => {
       tempImg.onload = () => {
         try {
           const canvas = document.createElement('canvas');
-          canvas.width = 16;
-          canvas.height = 16;
+          canvas.width = 32;
+          canvas.height = 32;
           const ctx = canvas.getContext('2d');
           if (!ctx) return;
-          ctx.drawImage(tempImg, 0, 0, 16, 16);
-          const imgData = ctx.getImageData(0, 0, 16, 16).data;
-          let maxScore = -1;
-          let bestR = 255, bestG = 61, bestB = 0;
+          ctx.drawImage(tempImg, 0, 0, 32, 32);
+          const imgData = ctx.getImageData(0, 0, 32, 32).data;
 
+          const buckets = [];
           for (let i = 0; i < imgData.length; i += 4) {
             const r = imgData[i];
             const g = imgData[i + 1];
@@ -639,27 +632,47 @@ export const getMiniplayerHTML = (): string => {
             const l = (max + min) / 510;
             const s = max === min ? 0 : (max - min) / (l < 0.5 ? (max + min) : (510 - max - min));
 
-            if (l > 0.28 && l < 0.80 && s > 0.25) {
-              const score = s * 1.5 + (1 - Math.abs(l - 0.55));
-              if (score > maxScore) {
-                maxScore = score;
-                bestR = r;
-                bestG = g;
-                bestB = b;
-              }
+            // Select rich, vibrant mid-tones for high-contrast theming
+            if (l > 0.25 && l < 0.85 && s > 0.20) {
+              const score = s * 1.6 + (1 - Math.abs(l - 0.55));
+              buckets.push({ r, g, b, score });
             }
           }
 
-          if (maxScore > 0) {
-            card.style.setProperty('--accent-color', \`rgb(\${bestR}, \${bestG}, \${bestB})\`);
-            card.style.setProperty('--accent-glow', \`rgba(\${bestR}, \${bestG}, \${bestB}, 0.45)\`);
+          buckets.sort((a, b) => b.score - a.score);
+
+          if (buckets.length > 0) {
+            const primary = buckets[0];
+            let secondary = primary;
+            for (let j = 1; j < buckets.length; j++) {
+              const diff = Math.abs(buckets[j].r - primary.r) +
+                           Math.abs(buckets[j].g - primary.g) +
+                           Math.abs(buckets[j].b - primary.b);
+              if (diff > 75) {
+                secondary = buckets[j];
+                break;
+              }
+            }
+
+            card.style.setProperty('--accent-rgb', \`\${primary.r}, \${primary.g}, \${primary.b}\`);
+            card.style.setProperty('--accent-color', \`rgb(\${primary.r}, \${primary.g}, \${primary.b})\`);
+            card.style.setProperty('--accent-glow', \`rgba(\${primary.r}, \${primary.g}, \${primary.b}, 0.50)\`);
+            card.style.setProperty('--secondary-rgb', \`\${secondary.r}, \${secondary.g}, \${secondary.b}\`);
+            card.style.setProperty('--secondary-color', \`rgb(\${secondary.r}, \${secondary.g}, \${secondary.b})\`);
           } else {
+            // Default iALTURKi flame theme
+            card.style.setProperty('--accent-rgb', '255, 61, 0');
             card.style.setProperty('--accent-color', '#ff3d00');
             card.style.setProperty('--accent-glow', 'rgba(255, 61, 0, 0.45)');
+            card.style.setProperty('--secondary-rgb', '255, 120, 50');
+            card.style.setProperty('--secondary-color', '#ff7832');
           }
         } catch {
+          card.style.setProperty('--accent-rgb', '255, 61, 0');
           card.style.setProperty('--accent-color', '#ff3d00');
           card.style.setProperty('--accent-glow', 'rgba(255, 61, 0, 0.45)');
+          card.style.setProperty('--secondary-rgb', '255, 120, 50');
+          card.style.setProperty('--secondary-color', '#ff7832');
         }
       };
       tempImg.src = imgUrl;
@@ -700,8 +713,6 @@ export const getMiniplayerHTML = (): string => {
       const album = songInfo.album || '';
       const imageSrc = songInfo.imageSrc || '';
 
-      compactTitle.textContent = title;
-      compactArtist.textContent = artist;
       detailsTitle.textContent = title;
       detailsArtist.textContent = artist;
       detailsAlbum.textContent = album;

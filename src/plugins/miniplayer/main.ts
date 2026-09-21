@@ -12,16 +12,15 @@ import { getMiniplayerHTML } from './ui';
 import type { BackendContext } from '@/types/contexts';
 
 let miniplayerWindow: BrowserWindow | null = null;
-let currentConfig: MiniplayerPluginConfig;
 let hoverDebounceTimer: NodeJS.Timeout | null = null;
 let isCurrentlyHovered = false;
 
-const IDLE_WIDTH = 340;
-const IDLE_HEIGHT = 44;
+const IDLE_WIDTH = 44;
+const IDLE_HEIGHT = 160;
 const EXPANDED_WIDTH = 340;
-const EXPANDED_HEIGHT = 212;
-const MARGIN_RIGHT = 20;
-const MARGIN_BOTTOM = 14;
+const EXPANDED_HEIGHT = 224;
+const MARGIN_RIGHT = 4;
+const OFFSET_BOTTOM = 42;
 
 const getWorkArea = () => screen.getPrimaryDisplay().workArea;
 
@@ -31,7 +30,7 @@ const getIdleBounds = () => {
     width: IDLE_WIDTH,
     height: IDLE_HEIGHT,
     x: Math.round(workArea.x + workArea.width - IDLE_WIDTH - MARGIN_RIGHT),
-    y: Math.round(workArea.y + workArea.height - IDLE_HEIGHT - MARGIN_BOTTOM),
+    y: Math.round(workArea.y + workArea.height - IDLE_HEIGHT - OFFSET_BOTTOM),
   };
 };
 
@@ -41,7 +40,7 @@ const getExpandedBounds = () => {
     width: EXPANDED_WIDTH,
     height: EXPANDED_HEIGHT,
     x: Math.round(workArea.x + workArea.width - EXPANDED_WIDTH - MARGIN_RIGHT),
-    y: Math.round(workArea.y + workArea.height - EXPANDED_HEIGHT - MARGIN_BOTTOM),
+    y: Math.round(workArea.y + workArea.height - EXPANDED_HEIGHT - OFFSET_BOTTOM),
   };
 };
 
@@ -68,10 +67,7 @@ export const toggleMiniplayer = () => {
 
 export const onMainLoad = async ({
   window: mainWindow,
-  getConfig,
 }: BackendContext<MiniplayerPluginConfig>) => {
-  currentConfig = await getConfig();
-
   const bounds = getIdleBounds();
 
   miniplayerWindow = new BrowserWindow({
@@ -191,8 +187,17 @@ export const onMainLoad = async ({
     controls.seekTo(targetSeconds);
   });
 
+  // Handle enter miniplayer from Picture-in-Picture button
+  ipcMain.on('miniplayer:enter', () => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.hide();
+    }
+    showMiniplayer();
+  });
+
   // Handle restore main window
   ipcMain.on('miniplayer:restore', () => {
+    hideMiniplayer();
     if (!mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) {
         mainWindow.restore();
@@ -223,10 +228,6 @@ export const onMainLoad = async ({
     lastKnownSongInfo = getSafeSongInfo(songInfo);
     if (miniplayerWindow && !miniplayerWindow.isDestroyed()) {
       miniplayerWindow.webContents.send('miniplayer:update-track', lastKnownSongInfo);
-
-      if (currentConfig.enabled && !miniplayerWindow.isVisible() && !songInfo.isPaused) {
-        showMiniplayer();
-      }
     }
   });
 
@@ -235,16 +236,6 @@ export const onMainLoad = async ({
       miniplayerWindow.webContents.send('miniplayer:update-track', lastKnownSongInfo);
     }
     syncVolumeToMiniplayer();
-    if (currentConfig.enabled) {
-      showMiniplayer();
-    }
-  });
-
-  // Auto show on minimize if enabled
-  mainWindow.on('minimize', () => {
-    if (currentConfig.enabled) {
-      showMiniplayer();
-    }
   });
 
   mainWindow.on('closed', () => {
@@ -256,7 +247,6 @@ export const onMainLoad = async ({
 };
 
 export const onConfigChange = (newConfig: MiniplayerPluginConfig) => {
-  currentConfig = newConfig;
   if (!miniplayerWindow || miniplayerWindow.isDestroyed()) return;
 
   if (newConfig.enabled) {

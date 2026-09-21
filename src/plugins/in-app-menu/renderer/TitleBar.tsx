@@ -74,17 +74,64 @@ const separatorStyle = cacheNoArgs(
   `,
 );
 
-const badgeContainerStyle = cacheNoArgs(
+const pipButtonContainerStyle = cacheNoArgs(
   () => css`
     margin-left: auto;
     display: flex;
-    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    -webkit-app-region: no-drag;
+    white-space: nowrap;
+  `,
+);
+
+const pipButtonStyle = cacheNoArgs(
+  () => css`
+    -webkit-app-region: no-drag;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 61, 0, 0.14);
+    border: 1px solid rgba(255, 61, 0, 0.4);
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: inherit;
+    padding: 2.5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+    &:hover {
+      background: #ff3d00;
+      border-color: #ff3d00;
+      color: #ffffff;
+      box-shadow: 0 0 14px rgba(255, 61, 0, 0.55);
+      transform: translateY(-1px);
+    }
+
+    &:active {
+      transform: translateY(0) scale(0.96);
+    }
+
+    svg {
+      width: 13px;
+      height: 13px;
+      flex-shrink: 0;
+      fill: currentColor;
+    }
+  `,
+);
+
+const badgeContainerStyle = cacheNoArgs(
+  () => css`
+    display: flex;
     align-items: center;
     -webkit-app-region: no-drag;
-    padding-right: 8px;
     white-space: nowrap;
 
-    @media (max-width: 860px) {
+    @media (max-width: 880px) {
       display: none;
     }
   `,
@@ -504,17 +551,35 @@ export const TitleBar = (props: TitleBarProps) => {
           </Index>
         </Show>
       </TransitionGroup>
-      <div class={badgeContainerStyle()}>
-        <a
-          class={badgeLinkStyle()}
-          href="https://github.com/iAlturki"
-          target="_blank"
-          title="ytr-music (iALTURKi Edition) - Visit GitHub Profile"
+      <div class={pipButtonContainerStyle()}>
+        <div class={badgeContainerStyle()}>
+          <a
+            class={badgeLinkStyle()}
+            href="https://github.com/iAlturki"
+            target="_blank"
+            title="ytr-music (iALTURKi Edition) - Visit GitHub Profile"
+          >
+            <span style={{ 'color': '#ff3d00', 'font-weight': 700 }}>ytr-music</span>
+            <span style={{ 'color': 'rgba(255, 255, 255, 0.3)' }}>•</span>
+            <span style={{ 'font-weight': 500 }}>iALTURKi Edition © 2026</span>
+          </a>
+        </div>
+        <button
+          class={pipButtonStyle()}
+          onClick={() => {
+            if (props.ipc?.send) {
+              props.ipc.send('miniplayer:enter');
+            } else {
+              window.ipcRenderer?.send('miniplayer:enter');
+            }
+          }}
+          title="Picture-in-Picture: Close window into floating desktop widget"
         >
-          <span style={{ 'color': '#ff3d00', 'font-weight': 700 }}>ytr-music</span>
-          <span style={{ 'color': 'rgba(255, 255, 255, 0.3)' }}>•</span>
-          <span style={{ 'font-weight': 500 }}>iALTURKi Edition © 2026</span>
-        </a>
+          <svg viewBox="0 0 24 24">
+            <path d="M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z" />
+          </svg>
+          <span>Picture-in-Picture</span>
+        </button>
       </div>
       <Show when={props.enableController}>
         <WindowController
