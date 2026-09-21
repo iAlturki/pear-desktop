@@ -420,27 +420,48 @@ export const TitleBar = (props: TitleBarProps) => {
               };
 
               return (
-                <>
-                  <MenuButton
-                    data-index={index}
-                    data-length={data()?.items.length}
-                    onClick={handleClick}
-                    ref={setAnchor}
-                    selected={openTarget() === anchor()}
-                    text={item().label}
+                <Show
+                  fallback={
+                    <>
+                      <MenuButton
+                        data-index={index}
+                        data-length={data()?.items.length}
+                        onClick={handleClick}
+                        ref={setAnchor}
+                        selected={openTarget() === anchor()}
+                        text={item().label}
+                      />
+                      <Panel
+                        anchor={anchor()}
+                        offset={{ mainAxis: 8 }}
+                        open={openTarget() === anchor()}
+                        placement={'bottom-start'}
+                      >
+                        <PanelRenderer
+                          items={item().submenu?.items ?? []}
+                          onClick={handleItemClick}
+                        />
+                      </Panel>
+                    </>
+                  }
+                  // A top-level item with no submenu (e.g. a standalone
+                  // checkbox meant as a one-click toggle) has nothing for
+                  // MenuButton's click handler to do - it only ever opens
+                  // the Panel above, which is why a top-level checkbox
+                  // used to render with no check icon and do nothing on
+                  // click. Render it as a real PanelItem instead, which
+                  // already knows how to show its checked state and
+                  // dispatch the click back to its native MenuItem.
+                  when={item().type === 'checkbox' && !item().submenu}
+                >
+                  <PanelItem
+                    checked={item().checked}
+                    commandId={item().commandId}
+                    name={item().label}
+                    onChange={() => handleItemClick(item().commandId)}
+                    type={'checkbox'}
                   />
-                  <Panel
-                    anchor={anchor()}
-                    offset={{ mainAxis: 8 }}
-                    open={openTarget() === anchor()}
-                    placement={'bottom-start'}
-                  >
-                    <PanelRenderer
-                      items={item().submenu?.items ?? []}
-                      onClick={handleItemClick}
-                    />
-                  </Panel>
-                </>
+                </Show>
               );
             }}
           </Index>
