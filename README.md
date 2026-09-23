@@ -1,81 +1,55 @@
 # ytr-music
 
-**High-performance, ultra-reliable, 100% ad-free music desktop client created by [iALTURKi](https://github.com/iALTURKi), featuring a pure C++ Win32 native engine, background dynamic audio limiter, and sample-accurate butter-smooth audio transitions.**
+🎵 A blisteringly fast, 100% ad-free desktop music client for Windows built with a pure C++ Win32 engine, background dynamic audio limiter, zero-latency audio transitions, and an interactive glass miniplayer. One self-contained client, zero clutter, no ads.
 
----
+[![Download Latest Release](https://img.shields.io/github/v/release/iAlturki/ytr-music?label=Download&style=for-the-badge&color=brightgreen)](https://github.com/iAlturki/ytr-music/releases/latest/download/ytr-music.exe)
 
-## What Makes This Edition Different
+<img src="assets/demo.gif" width="760" alt="ytr-music client playing music with smooth audio, zero ads, and responsive controls">
 
-| Pillar | Default YouTube Music Desktop | **ytr-music (iALTURKi Edition)** |
-| :--- | :--- | :--- |
-| **Ads & Tracking** | Unskippable video ads, promotional banners, telemetry | **100% Ad-Free**: In-player JSON payload pruner + multi-list declarative network blocker + instant auto-skip fallback. |
-| **Performance** | Constant GPU video decoding (even when video is hidden), heavy blur filters | **Super Performance Mode**: Automatically caps hidden video streams to 144p `tiny` quality, disables GPU video decode pipes, strips backdrop-filter / canvas overhead. |
-| **Audio Transitions** | Abrupt cuts on pause, clicks on resume, broken autoskip fades | **Silky Smooth Audio**: Continuous logarithmic volume curves with high-resolution end-of-track polling, pre-play zeroing (no pops), and MediaSource transition integration. |
-| **Volume Reliability** | Desync on startup (slider at 15%, sound at 100%) | **Strict Synchronization**: Pre-seeded localStorage + component-level playbar hook + race-condition-free volume persistence. |
-| **Stability** | Fragmented background throttling crashes | **Self-Healing Architecture**: Zero-discontinuity scalers, rAF starvation watchdogs, isolated plugin boundaries. |
+| Clean Ad-Free Player | Glass Desktop Miniplayer | Native Speed & Dynamic Limiter |
+|:-:|:-:|:-:|
+| <img src="assets/player-clean.png" width="300"> | <img src="assets/miniplayer.png" width="200"> | <img src="assets/native-performance.png" width="260"> |
 
----
+## What's new in 4.0
+
+- **Pure C++ Win32 Native Engine** – sub-1MB binary footprint, instant startup, and <90MB RAM working set compaction replacing heavy runtimes.
+- **100% Ad-Free Audio Engine** – in-player JSON payload pruner + network domain blocker. Zero audio ads, zero video ads, zero interruptions.
+- **Background Dynamics Limiter & Ear Protection** – automatic transparent leveling (`-24 dB` threshold, `5:1` ratio) at strict `1.0x` unity gain. Eliminates deafening volume spikes while strictly preserving user volume slider fidelity.
+- **Desktop Glass Miniplayer** – vertical right-docked widget floating above the taskbar with album art, animated EQ bars, interactive seek scrubber, wheel volume, and global shortcut toggle (`Ctrl+Alt+M`).
+- **Equal-Power Smooth Audio Fades** – continuous logarithmic volume curves across pause, resume, and track skips with 25ms end-of-track polling.
+
+## Features
+
+- **Pure Native Speed** – Built with modern C++17 and the lightweight Windows WebView2 Evergreen runtime. Under 400 KB executable size with hardware-accelerated rendering and background RAM compaction.
+- **Always-On Ear Protection** – Dynamics limiter operates headless in the background without UI clutter, clamping sudden loud audio peaks while strictly honoring your volume slider level.
+- **Zero Ads, Zero Telemetry** – Strips ad slots and tracking payloads before playback initialization, with microsecond auto-skip fallback.
+- **Glass Acrylic Miniplayer** – Hover-expanding miniplayer with real-time waveform EQ, interactive progress scrubbing, track skipping, and right-click context menu.
+- **Global Hotkeys & Media Keys**
+  - `Ctrl + Alt + M` – Toggle Desktop Glass Miniplayer
+  - `Ctrl + Alt + Space` / `Media Play/Pause` – Play / Pause
+  - `Ctrl + Alt + Right` / `Media Next` – Next Track
+  - `Ctrl + Alt + Left` / `Media Prev` – Previous Track
+  - `Mouse Wheel` over Miniplayer – Adjust Volume
+- **System Tray Integration** – Seamless minimize-to-tray with live song info tooltips and instant wake.
 
 ## Quick Start
 
-### Option 1: One-Click Run (Windows)
-Double-click **`Run.bat`** in the repository root. It terminates any stale background instances, builds updated bundles, and launches the app immediately.
+### Portable Run (No installation needed)
+1. Download **[`ytr-music.exe`](https://github.com/iAlturki/ytr-music/releases/latest/download/ytr-music.exe)** from the latest release.
+2. Run `ytr-music.exe` directly, or double-click **`Run-Native.bat`**.
 
-### Option 2: Command Line
+### Building from Source
 ```powershell
-# Install dependencies
-pnpm.cmd install
+# Clone the repository
+git clone https://github.com/iAlturki/ytr-music.git
+cd ytr-music
 
-# Build production bundles
-pnpm.cmd build
-
-# Start the application
-pnpm.cmd start
+# Compile the native C++ client with MinGW-W64
+cmd.exe /c native\build.bat
 ```
 
----
+## Author & License
 
-## Core Innovations
-
-### 1. 100% Ad-Free Playback Engine
-- **In-Player Payload Pruner (`src/plugins/do-not-track/injectors/inject.ts`)**: Injected into the preload pipeline to scrub ad breaks, tracking parameters, and ad slots directly from YouTube's `ytInitialPlayerResponse` and runtime `playerResponse` objects before the media player ever receives them.
-- **Network Engine Blocker (`src/plugins/do-not-track/blocker.ts`)**: Built-in fallback rule sets from EasyList, EasyPrivacy, and uBlock Origin to intercept telemetry and ad domains at the Electron session level.
-- **Microsecond Ad Skip (`src/plugins/ad-skip/index.ts`)**: If an edge-case ad manages to load, it is instantly muted and fast-forwarded at `playbackRate = 16` to `currentTime = duration`.
-
-### 2. Hardware-Throttled Super Performance Mode
-- **Zero Background Video Decode**: When in song/audio-only mode or when video is suppressed, YouTube's DASH player is locked to `playback-mode="ATV_PREFERRED"` and stream quality is throttled to `'tiny'` (144p). This slashes GPU 3D and Video Decode overhead from hundreds of MBs down to near zero.
-- **Compositing Cleanup**: Backdrops, heavy blur filters, and canvas drawing contexts are suspended to preserve CPU and battery life.
-
-### 3. Butter-Smooth Audio Engine
-- **Logarithmic Perceptual Curve**: Replaces linear volume scaling with continuous psychoacoustic decibel curves, eliminating the harsh volume "cliff" on pause.
-- **Pre-Play Zeroing**: Guarantees `video.volume = 0` *before* the media element unpauses, preventing loud onset pops on resume.
-- **High-Resolution End-of-Track Polling**: 25ms precision monitor during the final seconds of a song so that short fade-outs (e.g. 200ms) are never skipped due to coarse 250ms `timeupdate` intervals.
-- **MediaSource (MSE) Auto-Advance Sync**: Listens to YouTube's internal `videodatachange` events so seamless playlist advances fade smoothly from track to track without needing a video pause/play cycle.
-
----
-
-## Project Structure & Contribution
-
-For architectural guidelines, plugin development, and hard-won gotchas, consult [`CONTRIBUTING.md`](./CONTRIBUTING.md).
-
-```
-src/
-├── plugins/
-│   ├── ad-skip/             # Instant ad fast-forward & skip fallback
-│   ├── do-not-track/        # In-player JSON payload pruner & network blocker
-│   ├── fade-playback/       # Smooth pause, skip, resume & autoskip engine
-│   ├── performance-mode/    # Extreme low-overhead mode with GPU decode suppression
-│   ├── precise-volume/      # Granular volume control with startup desync fix
-│   └── video-toggle/        # Seamless audio-only / video switcher with quality throttling
-├── providers/               # Song info, IPC bridges, and extracted player data
-└── renderer.ts              # Renderer process bootstrap & Web Audio plumbing
-```
-
----
-
-## Author & Rights
-
-- **Creator, Architect & Rights Holder**: **[iALTURKi](https://github.com/iALTURKi)**
+- **Creator & Sole Rights Holder**: **[iALTURKi](https://github.com/iALTURKi)**
 - **Repository**: [github.com/iAlturki/ytr-music](https://github.com/iAlturki/ytr-music)
-- **License**: MIT License (see [`LICENSE`](./LICENSE) and [`NOTICE`](./NOTICE)).
-- **All Rights Reserved**: Copyright © 2026 iALTURKi.
+- **License**: MIT License (see [license](license)). All rights reserved.
