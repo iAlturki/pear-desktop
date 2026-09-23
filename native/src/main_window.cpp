@@ -48,7 +48,7 @@ bool MainWindow::Create() {
     m_hWnd = CreateWindowExW(
         WS_EX_APPWINDOW,
         L"YTRMusicMainWindowClass",
-        L"YouTube Music",
+        L"ytr-music",
         WS_OVERLAPPEDWINDOW,
         x, y, width, height,
         NULL, NULL, hInst, this

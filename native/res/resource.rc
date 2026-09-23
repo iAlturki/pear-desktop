@@ -17,13 +17,13 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "CompanyName", "iALTURKi"
-            VALUE "FileDescription", "ytr-music (iALTURKi Native Edition)"
-            VALUE "FileVersion", "1.0.0.0"
-            VALUE "InternalName", "ytr-music-native"
-            VALUE "LegalCopyright", "Copyright (C) 2026 iALTURKi"
-            VALUE "OriginalFilename", "ytr-music-native.exe"
-            VALUE "ProductName", "ytr-music Native"
-            VALUE "ProductVersion", "1.0.0.0"
+            VALUE "FileDescription", "ytr-music (iALTURKi Edition)"
+            VALUE "FileVersion", "4.0.0.0"
+            VALUE "InternalName", "ytr-music"
+            VALUE "LegalCopyright", "Copyright (C) 2026 iALTURKi. All rights reserved."
+            VALUE "OriginalFilename", "ytr-music.exe"
+            VALUE "ProductName", "ytr-music"
+            VALUE "ProductVersion", "4.0.0.0"
         END
     END
     BLOCK "VarFileInfo"

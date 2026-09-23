@@ -1,6 +1,6 @@
-# ytr-music (iALTURKi Edition)
+# ytr-music
 
-**Reconstructed, ultra-reliable, 100% ad-free YouTube Music desktop player with hardware-throttled Super Performance Mode and sample-accurate butter-smooth audio transitions.**
+**High-performance, ultra-reliable, 100% ad-free music desktop client created by [iALTURKi](https://github.com/iALTURKi), featuring a pure C++ Win32 native engine, background dynamic audio limiter, and sample-accurate butter-smooth audio transitions.**
 
 ---
 
@@ -73,8 +73,9 @@ src/
 
 ---
 
-## Authors & Legal
+## Author & Rights
 
-- **Creator & Reconstruction Maintainer**: **[iALTURKi](https://github.com/iALTURKi)**
-- **Original Base**: [th-ch / pear-devs](https://github.com/pear-devs/pear-desktop)
+- **Creator, Architect & Rights Holder**: **[iALTURKi](https://github.com/iALTURKi)**
+- **Repository**: [github.com/iAlturki/ytr-music](https://github.com/iAlturki/ytr-music)
 - **License**: MIT License (see [`LICENSE`](./LICENSE) and [`NOTICE`](./NOTICE)).
+- **All Rights Reserved**: Copyright © 2026 iALTURKi.

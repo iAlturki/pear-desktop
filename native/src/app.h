@@ -11,7 +11,7 @@
 
 struct SongInfo {
     std::wstring title = L"Ready to Play";
-    std::wstring artist = L"YouTube Music";
+    std::wstring artist = L"ytr-music";
     std::wstring album = L"";
     std::wstring artworkUrl = L"";
     bool isPaused = true;

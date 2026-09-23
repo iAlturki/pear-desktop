@@ -357,7 +357,7 @@ void MiniplayerWindow::ShowContextMenu(int x, int y) {
     InsertMenuW(hMenu, 1, MF_BYPOSITION | MF_STRING, 102, L"Next Track");
     InsertMenuW(hMenu, 2, MF_BYPOSITION | MF_STRING, 103, L"Previous Track");
     InsertMenuW(hMenu, 3, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
-    InsertMenuW(hMenu, 4, MF_BYPOSITION | MF_STRING, 104, L"Restore YouTube Music");
+    InsertMenuW(hMenu, 4, MF_BYPOSITION | MF_STRING, 104, L"Restore ytr-music");
     InsertMenuW(hMenu, 5, MF_BYPOSITION | MF_STRING, 105, L"Close Miniplayer");
 
     SetForegroundWindow(m_hWnd);

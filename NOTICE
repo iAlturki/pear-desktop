@@ -1,12 +1,15 @@
-ytr-music (iALTURKi Edition)
-Copyright (c) 2026 iALTURKi
-GitHub: https://github.com/iAlturki
+ytr-music
+Copyright (c) 2026 iALTURKi. All rights reserved.
+Author & Sole Rights Holder: iALTURKi (https://github.com/iAlturki)
 Repository: https://github.com/iAlturki/ytr-music
 
 Licensed under the MIT License (see LICENSE).
 
-Features:
+Architecture & Core Systems:
+- Pure C++ Win32 WebView2 Native Client (sub-1MB footprint, ultra-low memory)
 - 100% Ad-Free Audio Engine with zero streaming interruptions
-- Super Performance Mode with background decode throttling
+- Transparent Background Dynamic Audio Limiter & Ear-Protection Limiter
+- High-Fidelity Volume Retention & Ear-Protection Unity Gain Engine
+- Desktop Glass Miniplayer Widget with interactive seek scrubbing & controls
+- Hardware-Throttled Super Performance Mode with GPU decode suppression
 - Equal-Power butter-smooth transitions across pause, skip, and resume
-- Self-healing volume state synchronization
